@@ -24,8 +24,8 @@
 IAC_COMUN_CARGADO=1
 
 # ── Identidad del repositorio en GitHub ──────────────────────────────────────
-GITHUB_USER="victormuelacarriles"
-REPO="IAC-IESMHP"
+GITHUB_USER="informatica-iesmhp"
+REPO="AULAS2627
 RAMA="main"
 GITREPO="https://github.com/${GITHUB_USER}/${REPO}.git"
 # Base para descargar ficheros sueltos del repo sin clonarlo (raw):
