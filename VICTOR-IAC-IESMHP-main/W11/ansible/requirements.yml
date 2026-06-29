@@ -1,0 +1,9 @@
+---
+# Colecciones de Ansible necesarias para gestionar Windows.
+# Instalar (en el equipo de control, Linux/WSL):
+#   ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: ansible.windows        # win_ping, win_service, win_regedit, win_get_url, win_shell, win_stat...
+  - name: chocolatey.chocolatey  # win_chocolatey, win_chocolatey_config
+  - name: community.windows      # win_firewall_rule, win_unzip...
+  - name: ansible.posix          # callbacks profile_roles/profile_tasks (medir tiempos en ansible.cfg)

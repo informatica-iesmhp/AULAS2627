@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# iac-docker-rootless-user.sh — PARTE USUARIO de la preparación Docker rootless
+# ---------------------------------------------------------------------------
+# Lo despliega el rol Ansible roles/Docker. Lo ejecuta el servicio de usuario
+# global iac-docker-rootless.service en la PRIMERA sesión de CADA usuario (corre
+# COMO el usuario, sin root). También se puede lanzar a mano:
+#       iac-docker-rootless-user.sh
+#
+# Da por hecha la parte de SISTEMA (rol roles/Docker: paquetes + repo) y la
+# parte ROOT por usuario (subuid/subgid + lingering) que deja
+# iac-docker-rootless-prep.sh vía pam_exec. Completa lo que cabe en permisos
+# del usuario:
+#   1. dockerd-rootless-setuptool.sh install (crea ~/.config/systemd/user/docker.service)
+#   2. systemctl --user enable --now docker.service
+#   3. docker context use rootless -> el cliente apunta al socket rootless
+#      (/run/user/<uid>/docker.sock) SIN depender de DOCKER_HOST en ~/.bashrc,
+#      así funciona también en terminales no-login y en apps gráficas.
+#
+# Idempotente y silencioso para no ensuciar el arranque de la sesión. Nunca
+# falla el servicio: si algo no está listo, se reintenta en el siguiente login.
+# ===========================================================================
+set -u
+
+[ "$(id -u)" -eq 0 ] && exit 0                                   # nunca para root
+command -v dockerd-rootless-setuptool.sh >/dev/null 2>&1 || exit 0   # falta la parte de sistema
+
+UID_ACT="$(id -u)"
+USER_NAME="$(id -un)"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID_ACT}"
+export PATH="/usr/bin:/sbin:/usr/sbin:$PATH"
+
+log() { logger -t iac-docker-rootless-user -- "$*" 2>/dev/null || true; }
+
+# Esperar a que el hook ROOT (pam_exec) haya escrito subuid/subgid: en el primer
+# login el servicio de usuario y pam_exec arrancan casi a la vez (posible race).
+ok=0
+for _ in $(seq 1 15); do
+    if grep -q "^$USER_NAME:" /etc/subuid 2>/dev/null \
+    && grep -q "^$USER_NAME:" /etc/subgid 2>/dev/null; then ok=1; break; fi
+    sleep 1
+done
+if [ "$ok" -ne 1 ]; then
+    log "sin subuid/subgid para $USER_NAME todavía; se reintentará en el próximo login"
+    exit 0
+fi
+
+UNIT="${HOME:-/home/$USER_NAME}/.config/systemd/user/docker.service"
+if [ ! -f "$UNIT" ]; then
+    log "instalando Docker rootless para $USER_NAME (dockerd-rootless-setuptool.sh install)"
+    if ! dockerd-rootless-setuptool.sh install >/dev/null 2>&1; then
+        log "fallo en dockerd-rootless-setuptool.sh install (se reintentará)"
+        exit 0
+    fi
+fi
+
+systemctl --user enable docker.service >/dev/null 2>&1 || true
+systemctl --user start  docker.service >/dev/null 2>&1 || true
+
+# Cliente -> daemon rootless por defecto, sin tocar ~/.bashrc ni DOCKER_HOST.
+if ! docker context inspect rootless >/dev/null 2>&1; then
+    docker context create rootless \
+        --docker "host=unix:///run/user/$UID_ACT/docker.sock" >/dev/null 2>&1 || true
+fi
+docker context use rootless >/dev/null 2>&1 || true
+
+log "Docker rootless preparado para $USER_NAME"
+exit 0

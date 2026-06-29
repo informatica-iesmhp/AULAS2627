@@ -1,0 +1,68 @@
+# Variables del rol preparaAD (preparación para unión a dominio Active Directory)
+# ---------------------------------------------------------------------------
+# Este rol deja el equipo PRECONFIGURADO para unirse a un dominio AD: instala
+# el stack realmd+SSSD+adcli+Kerberos, activa pam_mkhomedir, comprueba reloj/
+# hostname/DNS y verifica si el equipo ya está unido. Por defecto NO une al
+# dominio (preparaad_unir: false) — la unión necesita credenciales delegadas;
+# ver "Cómo unir" en el CLAUDE.md del rol y los scripts de apoyo en utilesAD/.
+
+# ---------------------------------------------------------------------------
+# Dominio / DNS / OU / cuenta de unión / NTP → ENTORNO (único punto de cambio)
+# ---------------------------------------------------------------------------
+# Esas variables (preparaad_dominio, preparaad_dominio_dnss, preparaad_ou,
+# preparaad_usuario_union, preparaad_ntp) ya NO viven aquí: se centralizan en
+# ../entornoAD.yml, que cargan tanto el rol (include_vars en tasks/main.yml)
+# como los scripts de utilesAD/. Para cambiar el dominio (producción ⇄ pruebas)
+# editar SOLO ese fichero. Se siguen pudiendo pisar puntualmente con -e:
+#   -e preparaad_dominio=otro.local
+# Aquí quedan solo los ajustes de COMPORTAMIENTO del rol (no del entorno).
+
+# Arreglo de /etc/nsswitch.conf para dominios AD terminados en .local (como
+# iesmhp.local): la línea hosts de Ubuntu lleva `mdns4_minimal
+# [NOTFOUND=return]` ANTES de `dns`, así que ping/kinit/adcli (getaddrinfo)
+# cortan en el mDNS y nunca preguntan a systemd-resolved por *.local — aunque
+# el split-DNS funcione. true = anteponer `dns` al mDNS (los nombres mDNS
+# legítimos, impresora.local..., siguen funcionando como fallback).
+preparaad_arregla_nsswitch: true
+
+# Stack de unión a dominio. Núcleo según la doc oficial de Ubuntu
+# (https://ubuntu.com/server/docs/how-to/sssd/with-active-directory/):
+# sssd-ad + sssd-tools + realmd + adcli. El resto son apoyos.
+preparaad_paquetes:
+  - realmd          # orquestador: realm discover/join/leave
+  - sssd-ad         # proveedor Active Directory de SSSD (arrastra sssd-common)
+  - sssd-tools      # sssctl, sss_cache… (diagnóstico y limpieza de caché)
+  - libnss-sss      # usuarios/grupos del dominio visibles en nsswitch (getent)
+  - libpam-sss      # autenticación PAM contra el dominio
+  - adcli           # herramienta de unión que realmd usa con AD
+  - krb5-user       # kinit/klist para diagnosticar Kerberos
+  - packagekit      # realmd lo usa para autoinstalar paquetes (aquí ya van preinstalados)
+  - bind9-dnsutils  # dig (diagnóstico DNS) y nsupdate (dyndns de sssd)
+  - samba-common-bin # `net` — motor de unión alternativo (realm join --membership-software=samba),
+                     # necesario contra DC Samba (ver preparaad_membership_software en entornoAD.yml)
+
+# ---- Unión automática al dominio (APAGADA por defecto) --------------------
+# Activarla SOLO en pases lanzados a mano, con la contraseña en ansible-vault
+# o por -e (NUNCA en claro en el repo):
+#   ansible-playbook -i equiposIABD.ini roles.yaml --tags preparaad \
+#     -e preparaad_unir=true -e @vault/preparaAD-vault.yml --ask-vault-pass
+# El vault lo genera utilesAD/2-CreaVault.sh y vive en vault/ (NO en
+# group_vars/: ahí se auto-cargaría y TODOS los pases —incluido el primer
+# arranque— exigirían la contraseña del vault).
+preparaad_unir: false
+# La cuenta de unión (preparaad_usuario_union) se define en ../entornoAD.yml.
+preparaad_password_union: ""  # su contraseña — SOLO vía vault (utilesAD/2-CreaVault.sh) o -e
+# Limitación: la contraseña no debe contener comillas simples (se interpola
+# en una orden shell; la tarea va con no_log).
+
+# ---- Opciones SSSD del IES (snippet conf.d, solo se aplica YA UNIDO) ------
+# false → login como "pepe"; true → exige "pepe@dominio"
+preparaad_fqn: false
+# Home de los usuarios del dominio (AD no suele rellenar unixHomeDirectory).
+# %u=usuario, %d=dominio. pam_mkhomedir lo crea en el primer login.
+preparaad_fallback_homedir: "/home/%u"
+# ad_gpo_access_control: el default de SSSD es "enforcing" y puede DENEGAR
+# TODOS los logins si las GPO "Allow log on locally" del dominio no
+# contemplan equipos Linux (bloqueo típico en AD de centros). "permissive"
+# evalúa las GPO pero no bloquea. Endurecer cuando las GPO estén revisadas.
+preparaad_gpo: "permissive"

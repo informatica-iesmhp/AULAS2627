@@ -1,0 +1,7 @@
+---
+# Paquete de Chocolatey para VMware Workstation Pro.
+#   Historicamente: 'vmware-workstation' (algunas versiones: 'vmwareworkstation').
+vmware_choco_name: vmware-workstation
+# Version de la lista: "25 H2 U1". Las versiones de Choco son numericas; deja
+# vacio ("") para instalar la ultima del paquete y ajusta si necesitas un build.
+vmware_version: ""

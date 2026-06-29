@@ -1,0 +1,11 @@
+# Variables del rol DockerRootless (configuración POR USUARIO, sin root)
+# ---------------------------------------------------------------------------
+# Este rol completa, COMO EL USUARIO, el Docker rootless que el rol de SISTEMA
+# `roles/Docker` deja preparado (repo, paquetes, subuid/subgid, lingering,
+# daemon de sistema desactivado). Ver ../../../../roles/Docker/CLAUDE.md.
+#
+# Por eso aquí solo se necesitan los datos del usuario que EJECUTA el playbook
+# (rolesUsuario.yaml corre con become: no, así que estos facts son los suyos).
+dr_user:      "{{ ansible_user_id }}"
+dr_user_uid:  "{{ ansible_user_uid }}"
+dr_user_home: "{{ ansible_user_dir }}"

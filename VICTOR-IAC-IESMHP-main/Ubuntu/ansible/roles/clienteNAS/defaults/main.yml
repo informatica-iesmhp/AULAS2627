@@ -1,0 +1,33 @@
+---
+# Variables del rol clienteNAS (cliente NFS del NAS del departamento)
+# Todo es parametrizable: para apuntar a otro NAS u otra carpeta base,
+# sobreescribir estas variables desde el playbook o con -e.
+
+# IP del servidor/NAS que exporta los recursos NFS
+nas_server_ip: "10.0.1.100"
+
+# Carpeta base local bajo la que se montan TODOS los exports descubiertos
+nas_base_mount: "/mnt/nasDepInfo"
+
+# Tipo de sistema de ficheros
+nas_fstype: "nfs"
+
+# Opciones de montaje:
+#   ro       -> solo lectura
+#   _netdev  -> el montaje espera a que haya red (clave en el 1er arranque)
+nas_mount_options: "ro,defaults,_netdev"
+
+# Estrategia para nombrar la subcarpeta local de cada export descubierto:
+#   basename -> /mnt/nasDepInfo/<último segmento de la ruta exportada>
+#   fullpath -> /mnt/nasDepInfo/<ruta exportada completa, sin la / inicial>
+# 'basename' da rutas más cortas; usa 'fullpath' si dos exports del NAS
+# comparten el mismo basename (p. ej. /vol1/datos y /vol2/datos).
+nas_subdir_strategy: "basename"
+
+# El NAS puede tardar en responder a showmount en el primer arranque:
+# reintentos y espera (segundos) entre cada intento.
+nas_showmount_retries: 5
+nas_showmount_delay: 5
+
+# Para ver manualmente lo que exporta el NAS:
+#   showmount -e 10.0.1.100

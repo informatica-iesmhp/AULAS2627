@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# ===========================================================================
+# iac-docker-rootless-prep.sh — PARTE ROOT de la preparación de Docker rootless
+# ---------------------------------------------------------------------------
+# Lo despliega el rol Ansible roles/Docker. Lo invoca pam_exec (perfil
+# /usr/share/pam-configs/iac-docker-rootless) en CADA apertura de sesión
+# interactiva (GDM, SSH, RDP, su -), como ROOT. También se puede lanzar a mano:
+#       sudo iac-docker-rootless-prep.sh <usuario>
+#
+# Hace SOLO lo que necesita root y que un usuario sin privilegios no puede:
+#   1. subuid/subgid: escribe un rango ÚNICO en /etc/subuid y /etc/subgid.
+#      Se escribe DIRECTAMENTE a fichero (NO `usermod --add-subuids`) porque
+#      usermod solo conoce /etc/passwd y FALLA con usuarios del DOMINIO (SSSD).
+#   2. loginctl enable-linger: el gestor systemd del usuario (y su daemon
+#      rootless) arranca en el boot sin necesidad de sesión gráfica abierta.
+#
+# La parte de USUARIO (dockerd-rootless-setuptool.sh install, arrancar el
+# docker.service del usuario, contexto rootless) la hace el servicio de usuario
+# global iac-docker-rootless.service -> /usr/local/bin/iac-docker-rootless-user.sh
+#
+# Diseñado para PAM: idempotente, MUY rápido en la ruta ya-configurada y NUNCA
+# devuelve error que bloquee el login (el perfil usa además 'optional').
+# ===========================================================================
+set -u
+
+# pam_exec invoca el módulo también al CERRAR sesión: solo actuar al abrir.
+[ "${PAM_TYPE:-open_session}" = "close_session" ] && exit 0
+
+USER_NAME="${1:-${PAM_USER:-}}"
+[ -n "$USER_NAME" ] || exit 0
+
+# Resolver el uid vía NSS (cubre usuarios locales y de dominio). Si no resuelve,
+# no es un usuario real en este equipo -> salir en silencio.
+USER_UID="$(id -u "$USER_NAME" 2>/dev/null)" || exit 0
+[ -n "$USER_UID" ] || exit 0
+
+MIN_UID={{ docker_rootless_min_uid }}
+[ "$USER_UID" -ge "$MIN_UID" ] || exit 0     # saltar root y cuentas de sistema
+[ "$USER_UID" -ne 65534 ] || exit 0          # saltar 'nobody'
+
+BLOCK={{ docker_subid_block_size }}
+START={{ docker_subid_block_start }}
+LOCK=/run/lock/iac-docker-subid.lock
+
+log() { logger -t iac-docker-rootless-prep -- "$*" 2>/dev/null || true; }
+
+# --- 0. nf_tables: prerequisito de dockerd-rootless-setuptool.sh -------------
+# El servicio de usuario (iac-docker-rootless-user.sh) ejecutará a continuación
+# `dockerd-rootless-setuptool.sh install`, que ABORTA si nf_tables no está
+# cargado ("Missing system requirements ... modprobe nf_tables"). Lo carga el
+# rol Docker (modules-load.d + modprobe) en el primer arranque, pero aquí, como
+# root y en CADA apertura de sesión, lo garantizamos también para equipos
+# anteriores a ese fix o si el módulo no se cargó al boot. Idempotente.
+modprobe nf_tables 2>/dev/null || true
+
+# --- 1. subuid/subgid: rango ÚNICO por usuario, el MISMO en ambos ficheros ---
+# Concurrencia (dos logins a la vez) serializada con flock. Idempotente: si ya
+# hay línea para el usuario en ambos ficheros, no toca nada.
+assign_subid() {
+    # Base libre = mayor (start+count) existente en subuid Y subgid, o START.
+    local maxend="$START" f s c end
+    for f in /etc/subuid /etc/subgid; do
+        [ -f "$f" ] || continue
+        while IFS=: read -r _ s c; do
+            [ -n "$s" ] && [ -n "$c" ] || continue
+            case "$s" in *[!0-9]*) continue ;; esac
+            case "$c" in *[!0-9]*) continue ;; esac
+            end=$(( s + c ))
+            [ "$end" -gt "$maxend" ] && maxend="$end"
+        done < "$f"
+    done
+    for f in /etc/subuid /etc/subgid; do
+        [ -f "$f" ] || : > "$f"
+        grep -q "^$USER_NAME:" "$f" 2>/dev/null && continue
+        printf '%s:%s:%s\n' "$USER_NAME" "$maxend" "$BLOCK" >> "$f"
+    done
+    log "subid asignado a $USER_NAME: $maxend:$BLOCK"
+}
+
+if ! { grep -q "^$USER_NAME:" /etc/subuid 2>/dev/null \
+    && grep -q "^$USER_NAME:" /etc/subgid 2>/dev/null; }; then
+    (
+        flock 9 || exit 0
+        assign_subid
+    ) 9>"$LOCK"
+fi
+
+# --- 2. lingering (el daemon rootless arranca en el boot, crea /run/user/<uid>)
+if [ ! -e "/var/lib/systemd/linger/$USER_NAME" ]; then
+    if loginctl enable-linger "$USER_NAME" 2>/dev/null; then
+        log "lingering habilitado para $USER_NAME"
+    else
+        log "no se pudo habilitar lingering para $USER_NAME"
+    fi
+fi
+
+exit 0

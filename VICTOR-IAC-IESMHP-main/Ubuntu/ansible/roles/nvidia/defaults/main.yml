@@ -1,0 +1,6 @@
+# Serie del driver NVIDIA a instalar.
+#   ""    → usa el driver RECOMENDADO por «ubuntu-drivers» (soporte nativo
+#           Ubuntu Desktop 26.04). Valor por defecto y recomendado.
+#   "570" → fuerza esa serie concreta (instala nvidia-driver-570). Solo si
+#           hace falta pinear manualmente una versión.
+required_nvidia_driver: ""

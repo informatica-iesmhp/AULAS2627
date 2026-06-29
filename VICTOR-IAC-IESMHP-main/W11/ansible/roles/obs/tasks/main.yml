@@ -1,0 +1,7 @@
+---
+# Rol obs — OBS Studio via Chocolatey.
+- name: Instalar OBS Studio {{ obs_version | default('(ultima)', true) }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: obs-studio
+    version: "{{ obs_version | default(omit, true) }}"
+    state: present

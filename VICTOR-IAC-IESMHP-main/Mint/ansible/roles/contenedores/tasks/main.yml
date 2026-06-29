@@ -1,0 +1,22 @@
+# Instala docker y podman
+
+- name: Instalar docker y podman
+  block:
+    - name: Instalar docker
+      ansible.builtin.include_role:
+        name: docker
+    - name: Instalar podman
+      ansible.builtin.include_role:
+        name: podman
+  when: ansible_virtualization_type != "docker" and ansible_virtualization_type != "podman"
+
+#TODO: comprobar que funciona dockercompse y podman-compose
+- name: Instalar docker-compose y podman-compose
+  block:
+    - name: Instalar docker-compose
+      ansible.builtin.include_role:
+        name: docker_compose
+    - name: Instalar podman-compose
+      ansible.builtin.include_role:
+        name: podman_compose
+  when: ansible_virtualization_type != "docker" and ansible_virtualization_type != "podman" 

@@ -1,0 +1,34 @@
+// /etc/polkit-1/rules.d/49-allow-user-admin-rdp.rules — Generado por el rol Ansible `rdp` (IAC-IESMHP).
+// Problema: en una sesión RDP/Wayland servida por gnome-remote-desktop, las
+// acciones administrativas (gestionar usuarios, instalar paquetes, arrancar o
+// parar servicios, cambiar red/hora…) lanzan un diálogo de autenticación de
+// PolicyKit. En sesiones remotas/desatendidas ese popup puede no llegar a
+// mostrarse y la acción falla en silencio (PolicyKit la bloquea).
+//
+// Solución: a los miembros del grupo `{{ rdp_polkit_admin_group }}` se les
+// concede directamente la acción (polkit.Result.YES, sin diálogo) cuando su
+// action.id empieza por alguno de los prefijos de abajo. Mismo enfoque que el
+// ejemplo `org.freedesktop.accounts.user-administration` (cubierto por el
+// prefijo `org.freedesktop.accounts.`) pero ampliado a las acciones que un
+// administrador de aula necesita realmente por RDP.
+//
+// polkitd recarga este directorio automáticamente al cambiar el fichero: NO
+// hace falta `systemctl daemon-reload` ni reiniciar polkit (lo que además
+// evita los cuelgues de `systemctl` en el primer arranque — ver rol `rdp`).
+//
+// La lista de prefijos y el grupo son configurables desde defaults/main.yml
+// (`rdp_polkit_admin_actions`, `rdp_polkit_admin_group`).
+
+polkit.addRule(function(action, subject) {
+    if (!subject.isInGroup("{{ rdp_polkit_admin_group }}"))
+        return;
+
+    var id = action.id;
+    if (
+{% for prefijo in rdp_polkit_admin_actions %}
+        id.indexOf("{{ prefijo }}") === 0{{ " ||" if not loop.last else "" }}
+{% endfor %}
+    ) {
+        return polkit.Result.YES;
+    }
+});

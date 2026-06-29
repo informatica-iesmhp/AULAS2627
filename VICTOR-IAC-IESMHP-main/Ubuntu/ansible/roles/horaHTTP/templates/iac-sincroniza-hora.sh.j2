@@ -1,0 +1,61 @@
+#!/bin/bash
+# =============================================================================
+#  iac-sincroniza-hora.sh   ({{ ansible_managed }})
+#  Instalado por el rol Ansible 'horaHTTP'. NO editar a mano: lo regenera el rol.
+#
+#  Sincroniza la hora del sistema:
+#    1) por NTP (systemd-timesyncd);
+#    2) si el UDP 123 está filtrado (típico en las aulas), por HTTP: lee la
+#       cabecera «Date:» (GMT) de una petición HTTPS (TCP 443, casi nunca
+#       filtrado) y la fija con `date -s` (la zona ya está puesta), propagando
+#       luego al RTC con `hwclock --systohc`.
+#
+#  Lo lanza iac-sincroniza-hora.service en cada arranque y iac-sincroniza-hora.timer
+#  cada {{ horahttp_timer_intervalo }}. Necesario porque en VMware con host Windows
+#  el RTC se desajusta tras cada reinicio y NTP no puede corregirlo (UDP 123 cerrado).
+# =============================================================================
+set -u
+
+ZONA="{{ horahttp_zona }}"
+
+logger -t iac-hora "Sincronizando hora (zona $ZONA)..."
+timedatectl set-timezone "$ZONA" 2>/dev/null \
+    || logger -t iac-hora "No se pudo fijar la zona horaria con timedatectl."
+# Servidores NTP por defecto (NTP= vacío → FallbackNTP de timesyncd).
+timedatectl set-ntp true 2>/dev/null || true
+systemctl restart systemd-timesyncd 2>/dev/null || true
+
+# Esperar a que NTP confirme sincronización (máx ~{{ horahttp_ntp_intentos * 2 }} s).
+for i in $(seq 1 {{ horahttp_ntp_intentos }}); do
+    [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ] && break
+    sleep 2
+done
+
+if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+    logger -t iac-hora "Hora sincronizada por NTP: $(date)"
+    exit 0
+fi
+
+# Fallback HTTP.
+logger -t iac-hora "NTP no confirmó sincronización (¿UDP 123 bloqueado?); intento por HTTP..."
+HORA_HTTP=""
+for url in {{ horahttp_urls | join(' ') }}; do
+    if command -v curl >/dev/null 2>&1; then
+        HORA_HTTP="$(curl -sI --max-time 10 "$url" 2>/dev/null \
+            | grep -i '^[[:space:]]*date:' | head -n1 \
+            | sed -E 's/^[[:space:]]*[Dd]ate:[[:space:]]*//; s/\r$//' || true)"
+    else
+        HORA_HTTP="$(wget -SqO /dev/null --timeout=10 "$url" 2>&1 \
+            | grep -i '^[[:space:]]*date:' | head -n1 \
+            | sed -E 's/^[[:space:]]*[Dd]ate:[[:space:]]*//; s/\r$//' || true)"
+    fi
+    if [ -n "$HORA_HTTP" ] && date -s "$HORA_HTTP" >/dev/null 2>&1; then
+        hwclock --systohc 2>/dev/null || true
+        logger -t iac-hora "Hora sincronizada por HTTP ($url): $(date)"
+        exit 0
+    fi
+    HORA_HTTP=""
+done
+
+logger -t iac-hora "No se pudo sincronizar por HTTP; se mantiene la hora actual: $(date)"
+exit 0

@@ -1,0 +1,24 @@
+---
+# Variables por defecto para el rol comparteaula
+# Se sobreescriben automáticamente según el aula detectada por IP
+
+# Configuración de aulas conocidas (diccionario)
+aulas:
+  "72":   # Aula IABD (10.0.72.x)
+    es_servidor_nfs: true  # El equipo -00 actúa como servidor NFS
+    disco_hd: "/home"
+    carpeta_nfs: "/home/ComparteProfesor"
+    nfs_server_ip: "10.0.72.120"
+    nfs_server_path: "/home/ComparteProfesor"
+    nfs_mount_point: "/ComparteProfesor"
+    nfs_mount_options: "rw,hard,intr,rsize=262144,wsize=262144,timeo=600"
+    nfs_export_subnet: "10.0.72.0/24"
+  "32":   # Aula SMRD (10.0.32.x)
+    es_servidor_nfs: false  # Solo clientes, el servidor es el NAS
+    nfs_server_ip: "10.0.32.253"
+    nfs_server_path: "/mnt/DiscosRapidos/PruebaRapidosX3"
+    nfs_mount_point: "/mnt/nasFAST"
+    nfs_mount_options: "ro,defaults,_netdev"
+
+# para ver lo exportado por un servidor NFS:
+# showmount -e [ip]

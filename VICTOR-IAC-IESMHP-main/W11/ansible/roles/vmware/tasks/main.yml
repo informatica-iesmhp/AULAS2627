@@ -1,0 +1,8 @@
+---
+# Rol vmware — VMware Workstation Pro via Chocolatey.
+# Workstation Pro es gratuito para uso personal/educativo desde 2024.
+- name: Instalar VMware Workstation Pro {{ vmware_version | default('(ultima)', true) }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ vmware_choco_name }}"
+    version: "{{ vmware_version | default(omit, true) }}"
+    state: present

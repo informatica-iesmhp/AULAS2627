@@ -1,0 +1,8 @@
+vmware_version: "17.6.4"
+
+#Ruta en el equipo remoto donde se encuentra el bundle de VMware Workstation
+# ->es una carpeta NFS remota mapeada.
+# ->en la instalación se copia a /tmp y se ejecuta desde allí
+vmware_bundle_path: "/ComparteProfesor/Soft/VMware-Workstation-Full-17.6.4-24832109.x86_64.bundle"
+
+

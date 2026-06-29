@@ -1,0 +1,2 @@
+#external_keys_file: "/opt/iesmhpMint/Autorizados.txt" 
+external_keys_file: "/root/extra_authorized_keys"

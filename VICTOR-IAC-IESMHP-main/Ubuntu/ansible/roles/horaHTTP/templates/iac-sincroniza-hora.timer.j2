@@ -1,0 +1,13 @@
+[Unit]
+# {{ ansible_managed }}
+Description=IAC-IESMHP - Re-sincroniza la hora cada {{ horahttp_timer_intervalo }}
+
+[Timer]
+# El arranque ya lo cubre el .service (WantedBy=multi-user.target); aquí solo
+# la re-sincronización periódica para corregir deriva en equipos con mucho uptime.
+OnBootSec={{ horahttp_timer_intervalo }}
+OnUnitActiveSec={{ horahttp_timer_intervalo }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

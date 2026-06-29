@@ -1,0 +1,12 @@
+---
+# BaseX (base de datos XML). Es una app Java: requiere un JRE/JDK.
+basex_version: "12.4"
+# URL del ZIP oficial. TODO: verificar que existe para la version deseada.
+#   Patron historico: https://files.basex.org/releases/<ver>/BaseX<verSinPuntos>.zip
+basex_url: "https://files.basex.org/releases/12.4/BaseX124.zip"
+# Carpeta destino (el ZIP descomprime una carpeta 'basex' dentro).
+basex_dest: "C:\\Program Files"
+basex_dir: "C:\\Program Files\\basex"
+# Instalar un JRE con Chocolatey si BaseX lo necesita (Temurin). true/false.
+basex_instala_java: true
+basex_java_choco_name: temurin

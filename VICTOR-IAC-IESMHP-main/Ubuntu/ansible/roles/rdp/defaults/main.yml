@@ -1,0 +1,38 @@
+# Variables del rol `rdp` (servidor RDP nativo de GNOME en Ubuntu 26.04)
+
+# Credenciales con las que se accede por RDP al equipo.
+rdp_username: "ubuntu"
+rdp_password: "ubuntu"
+
+# Directorio donde vive el certificado TLS y el grd.conf del servidor RDP.
+rdp_tls_dir: "/etc/gnome-remote-desktop"
+
+# Directorio donde gnome-remote-desktop guarda credentials.ini (GKeyFile
+# fallback, bajo el HOME del usuario de sistema gnome-remote-desktop).
+rdp_creds_dir: "/var/lib/gnome-remote-desktop/.local/share/gnome-remote-desktop"
+
+# Parámetros del certificado autofirmado que se genera si no existe.
+rdp_cert_days: 3650
+rdp_cert_subject: "/CN=gnome-remote-desktop"
+
+# --- PolicyKit -----------------------------------------------------------
+# En una sesión RDP/Wayland de gnome-remote-desktop, las acciones
+# administrativas (gestionar usuarios, instalar paquetes, arrancar/parar
+# servicios, cambiar red/hora…) lanzan un diálogo de autenticación de
+# PolicyKit que en sesiones remotas desatendidas puede no llegar a mostrarse
+# (la acción falla en silencio). A los miembros de `rdp_polkit_admin_group`
+# se les concede directamente (sin diálogo) el conjunto de acciones cuyo
+# action.id empieza por alguno de los prefijos de `rdp_polkit_admin_actions`.
+rdp_polkit_rules_file: "/etc/polkit-1/rules.d/49-allow-user-admin-rdp.rules"
+rdp_polkit_admin_group: "sudo"
+rdp_polkit_admin_actions:
+  - "org.freedesktop.accounts."          # gestión de usuarios/cuentas
+  - "org.freedesktop.packagekit."        # instalar/actualizar paquetes
+  - "org.freedesktop.systemd1."          # arrancar/parar servicios
+  - "org.freedesktop.NetworkManager."    # configuración de red
+  - "org.freedesktop.timedate1."         # fecha/hora/zona horaria
+  - "org.freedesktop.locale1."           # idioma/teclado del sistema
+  - "org.freedesktop.hostname1."         # nombre del equipo
+  - "org.freedesktop.color-manager."     # perfiles de color
+  - "org.freedesktop.udisks2."           # montar/formatear discos
+  - "org.gnome.controlcenter."           # panel de Configuración de GNOME

@@ -1,0 +1,8 @@
+vmware_version: "26.0.0"
+
+#Ruta en el equipo remoto donde se encuentra el bundle de VMware Workstation
+# ->es una carpeta NFS remota mapeada (por el rol "clienteNAS")
+# ->en la instalación se copia a /tmp y se ejecuta desde allí
+vmware_bundle_path: "/mnt/nasDepInfo/PruebaRapidosX3/_SoftwareComun/VMware-Workstation-Full-26H1-25388281.x86_64.bundle"
+
+

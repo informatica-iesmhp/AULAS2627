@@ -1,0 +1,42 @@
+#!/bin/bash
+# iac-rdp-config.sh — Generado por el rol Ansible `rdp` (IAC-IESMHP).
+#
+# Reafirma de forma DETERMINISTA la configuración del servidor RDP *system*
+# de GNOME (gnome-remote-desktop) escribiendo directamente sus dos ficheros,
+# SIN usar `grdctl` (cuyas escrituras de tls/enable dependen de que el daemon
+# esté vivo y se perdían en el primer arranque desatendido — ver
+# RegistroDeCambios 2026-05-16/17).
+#
+# Lo ejecuta `iac-rdp-config.service` en CADA arranque, ordenado
+# Before=gnome-remote-desktop.service, así el daemon siempre arranca leyendo
+# la config correcta aunque algo la hubiera pisado en un apagado anterior.
+set -eu
+
+GRD_USER="gnome-remote-desktop"
+TLS_DIR="{{ rdp_tls_dir }}"
+GRD_CONF="$TLS_DIR/grd.conf"
+CRED_DIR="{{ rdp_creds_dir }}"
+CRED_FILE="$CRED_DIR/credentials.ini"
+
+# --- /etc/gnome-remote-desktop/grd.conf  (enable + rutas TLS) ---
+install -d -o "$GRD_USER" -g "$GRD_USER" -m 0755 "$TLS_DIR"
+cat > "$GRD_CONF" << 'GRDCONF'
+[RDP]
+tls-cert={{ rdp_tls_dir }}/tls.crt
+tls-key={{ rdp_tls_dir }}/tls.key
+enabled=true
+GRDCONF
+chown "$GRD_USER:$GRD_USER" "$GRD_CONF"
+chmod 0664 "$GRD_CONF"
+
+# --- credentials.ini  (usuario/contraseña RDP; GKeyFile fallback, texto
+# plano GVariant — el contenido es el que en la máquina de referencia
+# persistió tras reboot y dejó el RDP operativo). `install -d` crea toda la
+# cadena de directorios bajo el HOME del usuario gnome-remote-desktop.
+install -d -o "$GRD_USER" -g "$GRD_USER" -m 0700 "$CRED_DIR"
+cat > "$CRED_FILE" << 'GRDCRED'
+[RDP]
+credentials={'username': <'{{ rdp_username }}'>, 'password': <'{{ rdp_password }}'>}
+GRDCRED
+chown "$GRD_USER:$GRD_USER" "$CRED_FILE"
+chmod 0600 "$CRED_FILE"

@@ -1,0 +1,63 @@
+# Rol horaHTTP — sincroniza la hora en cada arranque (NTP + fallback HTTP)
+#
+# Problema: en las aulas el UDP 123 (NTP) está filtrado, así que
+# systemd-timesyncd nunca confirma sincronización; y en VMware con host Windows
+# el RTC se desajusta tras cada reinicio. Resultado: tras reiniciar, la hora
+# vuelve a estar mal (los scripts 0b/1/3 solo la corrigen DURANTE la instalación).
+#
+# Solución: instalar un script + un service (cada arranque) + un timer (periódico)
+# que sincronizan la hora por NTP y, si falla, por HTTP (cabecera «Date:» de una
+# petición HTTPS, que viaja por el TCP 443 sí abierto).
+
+- name: horaHTTP - Asegurar un cliente HTTPS (curl) para el fallback
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: false
+
+- name: horaHTTP - Zona horaria actual
+  ansible.builtin.command: timedatectl show -p Timezone --value
+  register: horahttp_zona_actual
+  changed_when: false
+
+- name: horaHTTP - Fijar la zona horaria {{ horahttp_zona }}
+  ansible.builtin.command: "timedatectl set-timezone {{ horahttp_zona }}"
+  when: horahttp_zona_actual.stdout | trim != horahttp_zona
+
+- name: horaHTTP - Instalar el script de sincronización
+  ansible.builtin.template:
+    src: iac-sincroniza-hora.sh.j2
+    dest: "{{ horahttp_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: horaHTTP - Instalar la unidad service
+  ansible.builtin.template:
+    src: iac-sincroniza-hora.service.j2
+    dest: "/etc/systemd/system/{{ horahttp_unidad }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: horaHTTP - Instalar la unidad timer
+  ansible.builtin.template:
+    src: iac-sincroniza-hora.timer.j2
+    dest: "/etc/systemd/system/{{ horahttp_unidad }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+
+# 'daemon_reload: true' recarga systemd tras escribir/actualizar las unidades.
+- name: horaHTTP - Habilitar el service (se ejecuta en cada arranque) y lanzarlo ya
+  ansible.builtin.systemd:
+    name: "{{ horahttp_unidad }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: horaHTTP - Habilitar y arrancar el timer de re-sincronización periódica
+  ansible.builtin.systemd:
+    name: "{{ horahttp_unidad }}.timer"
+    enabled: true
+    state: started

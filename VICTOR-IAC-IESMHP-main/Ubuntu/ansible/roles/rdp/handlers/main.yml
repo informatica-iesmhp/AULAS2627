@@ -1,0 +1,11 @@
+---
+# Sin handlers.
+#
+# El antiguo handler "Reiniciar gnome-remote-desktop" se eliminó el 2026-05-16:
+# reiniciar el servicio al final del play (cuando el daemon ya estaba corriendo
+# con la config en memoria) hacía que el daemon viejo, al pararse, volcara su
+# estado vacío SOBRE /etc/gnome-remote-desktop/grd.conf → el RDP quedaba
+# `disabled` tras el primer reboot.
+#
+# Ahora el orden determinista (parar → configurar con grdctl → arrancar →
+# verificar) vive en tasks/main.yml; no se necesita ningún handler.

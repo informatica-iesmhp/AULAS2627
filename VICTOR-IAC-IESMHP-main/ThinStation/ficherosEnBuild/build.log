@@ -1,0 +1,1216 @@
+Checking for required commands... OK
+Using the 6.19.14-108.fc42.x86_64 Kernel
++ Building image: 
+cp-real isofs OK
+cp-real nls_ucs2_utils OK
+cp-real nls_utf8 OK
+cp-real nls_iso8859-1 OK
+Parameter: firefoxurl
+Parameter: thinlincurl
+Parameter: nxurl
+Parameter: 2xurl
+Parameter: tarantellaurl
+Parameter: chromeurl
+Parameter: vmviewurl
+Parameter: horizonurl
+Parameter: icaurl
+Parameter: ica_usburl
+Parameter: ica_appprotectionurl
+Parameter: kioskurl
+Parameter: torurl
+Parameter: xorg7_nvidiaurl
+Parameter: xorg7_fglrxurl
+Parameter: samsunguldurl
+Parameter: openkioskurl
+Parameter: vhusbipurl
+Parameter: useragentswitcherurl
+Parameter: https_everywhereurl
+Parameter: noscripturl
+Parameter: teamsurl
+Parameter: cups_lexmarkurl
+Parameter: cisco_secure_client_darturl
+Parameter: cisco_secure_client_vpnurl
+Parameter: splunkurl
+Parameter: udsclienturl
+Machine: qemu
+Machine: Virtualbox-4.1
+Machine: VMWare
+Package: alsa
+Package: pipewire
+Package: xfce4-pulseaudio-plugin
+Package: autonet
+Package: ssh
+Package: git
+Package: nano
+Package: freerdp
+Package: open-vm-tools
+Package: vboxguest
+Package: xe-guest-utils
+Package: locale-es_ES
+Package: sshd
+Package: xorg7
+Package: xorg7-amdgpu
+Package: xorg7-intel
+Package: xorg7-nouveau
+Package: xorg7-qxl
+Package: xorg7-vmware
+Package: xfwm4
+Package: lightdm
+Package: terminal
+Package: thunar
+Package: fonts-TTF-liberation
+Package: fonts-TTF-noto
+Package: icons-cursor
+Package: icons-gnome
+Package: icons-hicolor
+Package: icons-adwaita
+Package: gtk-theme-adwaita
+Parameter: desktop
+Parameter: grubtheme
+Parameter: tsuser
+Parameter: tsuserpasswd
+Parameter: rootpasswd
+Parameter: defaultconfig
+Parameter: baseurl
+Parameter: basename
+Parameter: basepath
+Parameter: hardlinkfs
+Parameter: sametimestmp
+Parameter: haltonerror
+Parameter: bootverbosity
+Parameter: fastboot
+Parameter: squashopt
+Parameter: initrdcmd
+Parameter: bootlogo
+Parameter: kernelcmdline
+Parameter: allfirmware
+Parameter: blacklist
+Parameter: downloads
+Doing an All Modules Build!
+
+Adding 6.19.14-108.fc42.x86_64 module dependencies on other modules and packages not picked up by depmod
+Not Found libinput!!
+Adding package dependencies for qxl
+				Package : spice-vdagent
+
+Adding Package Dependencies
+Adding dependent packages of alsa:
+                              package base
+                              package alsa-lib
+                              package alsa-ucm
+Adding dependent packages of fonts-TTF-liberation:
+                              package fontconfig
+Adding dependent packages of freerdp:
+                              package messagebox
+                              package pcscd
+                              package gst-libav
+                              package gst-plugins-base
+                              package gstreamer
+                              package gtkdialog
+Adding dependent packages of git:
+                              package ca-certificates
+Adding dependent packages of lightdm:
+                              package xfce-polkit
+Adding dependent packages of locale-es_ES:
+                              package locale
+Adding dependent packages of open-vm-tools:
+                              package xmlsec1
+Adding dependent packages of pipewire:
+                              package pulseaudio-utils
+Adding dependent packages of xfce4-pulseaudio-plugin:
+                              package pavucontrol
+Adding dependent packages of xfwm4:
+                              package gdk-pixbuf
+                              package sshagent
+                              package at-spi2
+                              package gnome-core
+                              package gtk-3.0
+Adding dependent packages of xorg7-amdgpu:
+                              package mesa
+Adding dependent packages of xorg7:
+                              package x-common
+                              package dbus
+Adding dependent packages of base:
+                              package terminfo
+                              package busybox-shared
+                              package kmod
+                              package systemd
+                              package base-nss
+                              package bash
+                              package crypto-policies
+                              package libbpf
+                              package libgcc
+Adding dependent packages of messagebox:
+                              package pango
+Adding dependent packages of gtkdialog:
+                              package gtk-2.0
+Adding dependent packages of ca-certificates:
+                              package p11-kit
+Adding dependent packages of xfce-polkit:
+                              package polkit
+Adding dependent packages of xmlsec1:
+                              package openssl
+Adding dependent packages of gnome-core:
+                              package glib
+Adding dependent packages of gtk-3.0:
+                              package gtk-engines
+                              package glib2
+Adding dependent packages of mesa:
+                              package mesa-basic
+                              package vulkan
+Adding dependent packages of x-common:
+                              package xkeyboard-config
+                              package xorg7-xinput
+                              package plymouth
+Adding dependent packages of glib:
+                              package fuse
+                              package fuse3
+Adding dependent packages of mesa-basic:
+                              package llvm-libs
+Adding dependent packages of plymouth:
+                              package fonts-TTF-dejavu-sans
+
+Adding 6.19.14-108.fc42.x86_64 module dependencies on other packages
+Package : open-vm-tools   Module: virtio_console
+Module virtio_console already builtin
+Package : open-vm-tools   Module: virtio_blk
+Module virtio_blk already builtin
+Package : systemd   Module: dm-mod
+Module dm-mod already builtin
+Package : vboxguest   Module: virtio_console
+Module virtio_console already builtin
+Package : vboxguest   Module: virtio_blk
+Module virtio_blk already builtin
+
+Dependencies are dirty. Restarting!
+
+Adding 6.19.14-108.fc42.x86_64 module dependencies on other modules and packages not picked up by depmod
+Not Found libinput!!
+
+Adding Package Dependencies
+
+Adding 6.19.14-108.fc42.x86_64 module dependencies on other packages
+Package : open-vm-tools   Module: virtio_console
+Module virtio_console already builtin
+Package : open-vm-tools   Module: virtio_blk
+Module virtio_blk already builtin
+Package : systemd   Module: dm-mod
+Module dm-mod already builtin
+Package : vboxguest   Module: virtio_console
+Module virtio_console already builtin
+Package : vboxguest   Module: virtio_blk
+Module virtio_blk already builtin
+
+Dependencies are clean!
+
+Adding and install non-distributable binaries
+
+
+Adding Packages to Filetree
+
+Setting Passwords
+Setting basepath
+Setting baseurl
+Checking for Key File
+Checking for Desktop background
+Using file:./backgrounds/Hive_Lite.jpg as desktop background
+Checking for Known Hosts File
+Checking for ICA encryption support
+Checking for Debug Verbosity
+Checking for Halt on Error Override
+
+Adding locales to archive.
+
+locale: es_ES.UTF-8
+
+Building Sample Thinstation.conf File
+
+
+Checking if extended locale support is enabled
+
+
+Adding Library Dependencies
+
+Adding library dependencies for gpg-protect-tool
+Adding library dependencies for scalar
+Adding library dependencies for librdtk0.so.0
+Adding library dependencies for pam_nologin.so
+Adding library dependencies for spa-monitor
+Adding library dependencies for scdaemon
+Adding library dependencies for systemd-pstore
+Adding library dependencies for systemd-executor
+Adding library dependencies for libpipewire-module-snapcast-discover.so
+Adding library dependencies for libgpgmepp.so.6
+Adding library dependencies for iocost
+Adding library dependencies for find
+Adding library dependencies for git-remote-http
+Adding library dependencies for libspa-alsa.so
+Adding library dependencies for systemd-sbsign
+Adding library dependencies for libnss_systemd.so.2
+Adding library dependencies for showrgb
+Adding library dependencies for libpipewire-module-rtp-sink.so
+Adding library dependencies for libactions.so
+Adding library dependencies for systemd-sysusers
+Adding library dependencies for libpipewire-module-rtp-session.so
+Adding library dependencies for libfreerdp-shadow3.so.3
+Adding library dependencies for libprintbackend-cups.so
+Adding library dependencies for fc-validate
+Adding library dependencies for aplaymidi
+Adding library dependencies for libwireplumber-module-default-nodes-api.so
+Adding library dependencies for libtasklist.so
+Adding library dependencies for gvfs-udisks2-volume-monitor
+Adding library dependencies for libgailutil-3.so.0
+Adding library dependencies for libpipewire-module-client-node.so
+Adding library dependencies for libgstadder.so
+Adding library dependencies for libgstpipewire.so
+			libpam.so.0
+			libm.so.6
+			libavahi-common.so.3
+			libm.so.6
+			libwayland-client.so.0
+			libwayland-client.so.0
+			libpam.so.0
+			libm.so.6
+			libselinux.so.1
+			libpcre2-8.so.0
+			libsystemd-shared-257.13-1.fc42.so
+			libsystemd-shared-257.13-1.fc42.so
+			libc.so.6
+			liborc-0.4.so.0
+			libsystemd-shared-257.13-1.fc42.so
+			libm.so.6
+			libc.so.6
+			libcairo.so.2
+			libc.so.6
+			libm.so.6
+			libcurl.so.4
+			libsystemd-shared-257.13-1.fc42.so
+			libwinpr3.so.3
+			libgudev-1.0.so.0
+			libgcrypt.so.20
+			libfreetype.so.6
+			libwinpr-tools3.so.3
+			libc.so.6
+			libc.so.6
+			libassuan.so.0
+			libm.so.6
+			libgcrypt.so.20
+Adding library dependencies for xauth
+Adding library dependencies for xsetroot
+Adding library dependencies for xinput
+Adding library dependencies for libbpf.so.1
+Adding library dependencies for glib-pacrunner
+Adding library dependencies for iceauth
+Adding library dependencies for kmod
+Adding library dependencies for libspa-filter-graph-plugin-builtin.so
+			libudisks2.so.0
+Adding library dependencies for libsecret-1.so.0
+Adding library dependencies for libcrypto.so.3
+			libseccomp.so.2
+			libopus.so.0
+Adding library dependencies for radeon_drv.so
+			libelf.so.1
+Adding library dependencies for xfreerdp
+			libaudit.so.1
+			libstdc++.so.6
+Adding library dependencies for libspa-codec-bluez5-lc3.so
+			libproxy.so.1
+			libz.so.1
+			libXmuu.so.1
+Adding library dependencies for libwireplumber-module-lua-scripting.so
+			libXau.so.6
+			libz.so.1
+Adding library dependencies for pinentry-gnome3
+			libavahi-client.so.3
+			libksba.so.8
+			libavahi-client.so.3
+			libz.so.1
+			libz.so.1
+			libXext.so.6
+Adding library dependencies for unix_chkpwd
+			libXi.so.6
+			libsndfile.so.1
+			libcups.so.2
+			libzstd.so.1
+Adding library dependencies for gpg
+			liblua-5.4.so
+			libICE.so.6
+Adding library dependencies for libxfce.so
+			libgnutls.so.30
+			libz.so.1
+			libdrm_radeon.so.1
+			liblc3.so.1
+			libgcr-4.so.4
+Adding library dependencies for gsd-datetime
+Adding library dependencies for libxmlsec1-nss.so.1
+			libcrypt.so.2
+			libXinerama.so.1
+			libbluray.so.2
+Adding library dependencies for libpango-1.0.so.0
+Adding library dependencies for libguestlib.so.0
+			libbz2.so.1
+			libXcursor.so.1
+			libacl.so.1
+			libXrandr.so.2
+Adding library dependencies for libspa-codec-bluez5-ldac.so
+Adding library dependencies for audioadapter.so
+			liblzma.so.5
+			libnpth.so.0
+Adding library dependencies for gsd-wwan
+			libharfbuzz.so.0
+Adding library dependencies for gcr-prompter
+			libncursesw.so.6
+			libfribidi.so.0
+			libdb-5.3.so
+Adding library dependencies for libnss_dns.so.2
+			libgeocode-glib-2.so.0
+			libldacBT_enc.so.2
+			libsqlite3.so.0
+			libssl3.so
+Adding library dependencies for alsamixer
+Adding library dependencies for libpixbufloader-webp.so
+Adding library dependencies for libvulkan_radeon.so
+			libtirpc.so.3
+			libmm-glib.so.0
+			libgcr-base-3.so.1
+			libharfbuzz.so.0
+Adding library dependencies for grpconv
+			libharfbuzz.so.0
+Adding library dependencies for libgsttheora.so
+			libblkid.so.1
+			libresolv.so.2
+			libformw.so.6
+			libthai.so.0
+Adding library dependencies for ati_drv.so
+Adding library dependencies for libexa.so
+Adding library dependencies for modesetting_drv.so
+Adding library dependencies for p11-kit-trust.so
+			libxcb-dri3.so.0
+Adding library dependencies for gsd-media-keys
+			libeconf.so.0
+			libgweather-4.so.0
+			libsamplerate.so.0
+			libXrender.so.1
+			libsmime3.so
+			libwebp.so.7
+			libtheoradec.so.1
+			libpixman-1.so.0
+			libldacBT_abr.so.2
+			libtinfo.so.6
+			libreadline.so.8
+			libpciaccess.so.0
+			libtasn1.so.6
+			libcairo-gobject.so.2
+			libmenuw.so.6
+			libpixman-1.so.0
+			libcairo-gobject.so.2
+			libpolkit-gobject-1.so.0
+			libmount.so.1
+			libnss3.so
+			libgeoclue-2.so.0
+			libtheoraenc.so.1
+			libcanberra.so.0
+Adding library dependencies for libccid.so
+Adding library dependencies for nano
+Adding library dependencies for libvulkan_intel.so
+Adding library dependencies for libgstcdparanoia.so
+Adding library dependencies for liblauncher.so
+Adding library dependencies for libpixbufloader-avif.so
+			libXfixes.so.3
+			libwebpdemux.so.2
+			libxfce4windowing-0.so.0
+			libnssutil3.so
+			libusb-1.0.so.0
+			libdrm.so.2
+			libmagic.so.1
+			libavif.so.16
+			libdrm.so.2
+Adding library dependencies for gsd-wacom
+			libgnome-desktop-3.so.20
+			libpanelw.so.6
+			libcdda_interface.so.0
+			libxfce4windowing-0.so.0
+Adding library dependencies for gvfsd-dav
+			libxfce4windowing-0.so.0
+			libdrm.so.2
+Adding library dependencies for libspa-codec-bluez5-sbc.so
+Adding library dependencies for libgstlibav.so
+Adding library dependencies for libstartup-notification-1.so.0
+Adding library dependencies for libinput.so.10
+Adding library dependencies for libply-splash-core.so.5
+			libwacom.so.9
+			libxcb.so.1
+			libwebpmux.so.3
+			libxcb.so.1
+Adding library dependencies for libGLESv2.so.2
+			libsoup-3.0.so.0
+			libplds4.so
+			libavcodec.so.61
+			libsbc.so.1
+			libcdda_paranoia.so.0
+Adding library dependencies for libgstreamer-1.0.so.0
+			libevdev.so.2
+			libmtdev.so.1
+			libxcb-util.so.1
+			libxfce4windowingui-0.so.0
+Adding library dependencies for xfce4-terminal
+			libGLdispatch.so.0
+Adding library dependencies for dirmngr_ldap
+			libX11-xcb.so.1
+			libupower-glib.so.3
+			libplc4.so
+			libgtk-layer-shell.so.0
+			libxml2.so.2
+Adding library dependencies for xfce4-color-settings
+			libX11-xcb.so.1
+			libxkbcommon.so.0
+			libavfilter.so.10
+Adding library dependencies for libgstxvimagesink.so
+Adding library dependencies for dbus-broker-launch
+Adding library dependencies for dirmngr
+			libX11-xcb.so.1
+			libldap.so.2
+			libunwind.so.8
+			libcolord.so.2
+Adding library dependencies for xfce4-session
+Adding library dependencies for pam_unix.so
+Adding library dependencies for pam_systemd.so
+Adding library dependencies for tumbler-xdg-cache.so
+			libldap.so.2
+			libcap-ng.so.0
+Adding library dependencies for librsvg-2.so.2
+			libXv.so.1
+			libavahi-glib.so.1
+			libutempter.so.0
+			libxcb-present.so.0
+			libnsl.so.3
+			libavformat.so.61
+			liblber.so.2
+			libxcb-present.so.0
+			libnspr4.so
+			libpng16.so.16
+			libdav1d.so.7
+			liblber.so.2
+			libpam_misc.so.0
+			libdw.so.1
+			libwnck-3.so.0
+Adding library dependencies for systemd-sysupdate
+			libxcb-xfixes.so.0
+			libexpat.so.1
+			libxslt.so.1
+Adding library dependencies for jack_firewire.so
+Adding library dependencies for thunar-media-tags-plugin.so
+			libavutil.so.59
+			libxcb-xfixes.so.0
+Adding library dependencies for gvfsd-onedrive
+			libfdisk.so.1
+Adding library dependencies for libpixbufloader-jxl.so
+			libltdl.so.7
+Adding library dependencies for libgstlibvisual.so
+			libxcb-sync.so.1
+Adding library dependencies for libfreerdp-client3.so.3
+Adding library dependencies for libgtk-3.so.0
+			libgoa-1.0.so.0
+			libffado.so.2
+			libtag.so.1
+Adding library dependencies for libDeployPkg.so.0
+			libjxl.so.0.11
+Adding library dependencies for libEGL_mesa.so.0
+Adding library dependencies for xfce-polkit
+Adding library dependencies for libVkLayer_khronos_validation.so
+Adding library dependencies for sdl-freerdp
+			libxcb-randr.so.0
+			libmspack.so.0
+			libSM.so.6
+			libvisual-0.4.so.0
+			libxcb-sync.so.1
+			libfuse3.so.3
+			libSPIRV-Tools-opt.so
+			libepoxy.so.0
+			libpolkit-agent-1.so.0
+			libmsgraph-1.so.1
+			libSDL3_ttf.so.0
+			libtag_c.so.0
+			libjxl_threads.so.0.11
+			libxcb-shm.so.0
+			libxcb-randr.so.0
+Adding library dependencies for libwnck-1.so.22
+			libSPIRV-Tools.so
+			libxcb-shm.so.0
+			libSDL3_image.so.0
+Adding library dependencies for ssh-sk-helper
+Adding library dependencies for xfdesktop
+			libcloudproviders.so.0
+			libXRes.so.1
+Adding library dependencies for gnome-keyring-3
+			libxshmfence.so.1
+Adding library dependencies for libspa-codec-bluez5-aac.so
+			libxshmfence.so.1
+			libwayland-server.so.0
+Adding library dependencies for xkbcomp
+			libyaml-0.so.2
+			libSDL3.so.0
+			libtinysparql-3.0.so.0
+Adding library dependencies for ssh
+			libfido2.so.1
+			libgck-1.so.0
+			libdrm_amdgpu.so.1
+			libfdk-aac.so.2
+			libxkbfile.so.1
+Adding library dependencies for gsd-power
+Adding library dependencies for libASEKey.so
+			libgssapi_krb5.so.2
+Adding library dependencies for tumbler-jpeg-thumbnailer.so
+			libcanberra-gtk3.so.0
+			libusb-0.1.so.4
+Adding library dependencies for wlfreerdp
+Adding library dependencies for tumbler-poppler-thumbnailer.so
+Adding library dependencies for gvfsd-google
+Adding library dependencies for gvfsd-cdda
+Adding library dependencies for tpm2daemon
+			libjpeg.so.62
+Adding library dependencies for polkitd
+Adding library dependencies for lspci
+			libgdata.so.22
+			libtss2-esys.so.0
+			libwayland-cursor.so.0
+			libpoppler-glib.so.8
+			libduktape.so.207
+Adding library dependencies for libspa-aec-webrtc.so
+			libcdio_paranoia.so.2
+			libpci.so.3
+			libcdio_cdda.so.2
+Adding library dependencies for thunar-apr.so
+			libwebrtc-audio-processing-1.so.3
+			libtss2-mu.so.0
+			libkmod.so.2
+Adding library dependencies for swapon
+			libexif.so.12
+			libcdio.so.19
+Adding library dependencies for systemd-integritysetup
+			libsmartcols.so.1
+			libtss2-rc.so.0
+Adding library dependencies for systemd-veritysetup
+			libcryptsetup.so.12
+			libcryptsetup.so.12
+Adding library dependencies for gnome-disks
+Adding library dependencies for gvfsd-mtp
+Adding library dependencies for busybox.shared
+			libtss2-tctildr.so.0
+Adding library dependencies for libspa-filter-graph-plugin-ebur128.so
+			libsepol.so.2
+			libdvdread.so.8
+Adding library dependencies for seahorse
+			libmtp.so.9
+			libebur128.so.1
+Adding library dependencies for libxatracker.so.2
+Adding library dependencies for libpulseaudio-plugin.so
+			libdrm_intel.so.1
+Adding library dependencies for libpulsecommon-17.0.so
+			libhandy-1.so.0
+Adding library dependencies for gsd-smartcard
+Adding library dependencies for libfreerdp3.so.3
+			libkeybinder-3.0.so.0
+			libasyncns.so.0
+Adding library dependencies for libgallium-25.1.9.so
+Adding library dependencies for libspa-filter-graph.so
+Adding library dependencies for Xorg
+			libsoxr.so.0
+			libgck-2.so.2
+			libfftw3f.so.3
+			libXdmcp.so.6
+			libsensors.so.4
+			libpwquality.so.1
+Adding library dependencies for libgstogg.so
+Adding library dependencies for xfsettingsd
+Adding library dependencies for libGLX_mesa.so.0.0.0
+			libpwquality.so.1
+			libgsm.so.1
+			libXfont2.so.2
+Adding library dependencies for libXaw.so.7
+Adding library dependencies for xfce4-keyboard-settings
+Adding library dependencies for libgstvorbis.so
+Adding library dependencies for libgobject-2.0.so.0
+			libxklavier.so.16
+Adding library dependencies for ps
+			libogg.so.0
+			libxcb-glx.so.0
+			libXmu.so.6
+Adding library dependencies for dropbear
+Adding library dependencies for numlockx
+			libffi.so.8
+Adding library dependencies for dialog
+			libxklavier.so.16
+			libproc2.so.0
+			libtomcrypt.so.1
+			libmp3lame.so.0
+Adding library dependencies for gsd-sharing
+			libvorbis.so.0
+			libXt.so.6
+			libXtst.so.6
+			libnm.so.0
+			libxcvt.so.0
+			libdialog.so.15
+			libXxf86vm.so.1
+			libtommath.so.1
+			libvorbisenc.so.2
+			libopenh264.so.7
+Adding library dependencies for xfwm4
+			libXpm.so.4
+			libXcomposite.so.1
+Adding library dependencies for libdndcp.so
+Adding library dependencies for libfreerdp-shadow-subsystem3.so.3
+Adding library dependencies for libgstopengl.so
+Adding library dependencies for libvte-2.91.so.0
+			libgtkmm-3.0.so.1
+Adding library dependencies for libgdk-x11-2.0.so.0
+			libXdamage.so.1
+			libXdamage.so.1
+Adding library dependencies for libpangoxft-1.0.so.0
+Adding library dependencies for libpixbufloader-tiff.so
+			libicuuc.so.76
+			libgraphene-1.0.so.0
+			libXdamage.so.1
+Adding library dependencies for pam_pwquality.so
+			libtiff.so.6
+			libXft.so.2
+Adding library dependencies for pavucontrol
+			libatkmm-1.6.so.1
+Adding library dependencies for tumbler-odf-thumbnailer.so
+			liblz4.so.1
+			libcrack.so.2
+			libgsf-1.so.114
+			libgtkmm-4.0.so.0
+Adding library dependencies for libsystray.so
+Adding library dependencies for libgstgl-1.0.so.0
+			libgdkmm-3.0.so.1
+Adding library dependencies for libspa-bluez5.so
+			libXpresent.so.1
+Adding library dependencies for sftp
+			libgiomm-2.68.so.1
+			libdbusmenu-gtk3.so.4
+Adding library dependencies for libgdk-3.so.0
+			libwayland-egl.so.1
+Adding library dependencies for gvfsd-archive
+			libbluetooth.so.3
+			libwayland-egl.so.1
+			libedit.so.0
+			libglibmm-2.4.so.1
+			libarchive.so.13
+			libglibmm-2.68.so.1
+			libdbusmenu-glib.so.4
+			libcairomm-1.0.so.1
+			libsigc-3.0.so.0
+			libsigc-2.0.so.0
+			libgtk-4.so.1
+			libjson-glib-1.0.so.0
+Adding library dependencies for libcurl.so.4
+Adding library dependencies for libfido2.so.1
+Adding library dependencies for libsoxr.so.0
+Adding library dependencies for libgdkmm-3.0.so.1
+			libnghttp2.so.14
+Adding library dependencies for libwebp.so.7
+Adding library dependencies for libharfbuzz.so.0
+Adding library dependencies for libavfilter.so.10
+			libgomp.so.1
+Adding library dependencies for libtiff.so.6
+			libcbor.so.0.11
+			libgiomm-2.4.so.1
+Adding library dependencies for libgtkmm-4.0.so.0
+Adding library dependencies for libtss2-esys.so.0
+			libgraphite2.so.3
+Adding library dependencies for libfreetype.so.6
+			libidn2.so.0
+			libsharpyuv.so.0
+			libswscale.so.8
+			libLerc.so.4
+Adding library dependencies for libfdisk.so.1
+			libcairomm-1.16.so.1
+Adding library dependencies for libXfont2.so.2
+			libtss2-sys.so.1
+Adding library dependencies for libavformat.so.61
+			libbrotlidec.so.1
+			libssh.so.4
+Adding library dependencies for libgtk-4.so.1
+Adding library dependencies for libgdata.so.22
+			libfontenc.so.1
+Adding library dependencies for libthai.so.0
+			libuuid.so.1
+			libdvdnav.so.4
+Adding library dependencies for libproxy.so.1
+			libpangomm-2.48.so.1
+Adding library dependencies for libcolord.so.2
+			libharfbuzz-subset.so.0
+			libpsl.so.5
+Adding library dependencies for libcanberra.so.0
+			libjbig.so.2.1
+			libpostproc.so.58
+Adding library dependencies for libgssapi_krb5.so.2
+			libsoup-2.4.so.1
+			libpxbackend-1.0.so
+			liblcms2.so.2
+Adding library dependencies for libcairo.so.2
+Adding library dependencies for libpoppler-glib.so.8
+			libvorbisfile.so.3
+Adding library dependencies for libxfce4windowing-0.so.0
+			libdatrie.so.1
+Adding library dependencies for libjxl.so.0.11
+			libxcb-render.so.0
+Adding library dependencies for libavif.so.16
+			libgme.so.0
+			libkrb5.so.3
+			libdisplay-info.so.2
+			libpoppler.so.146
+			libtdb.so.1
+			libjxl_cms.so.0.11
+Adding library dependencies for libSDL3_ttf.so.0
+Adding library dependencies for libbluray.so.2
+			libyuv.so.0
+Adding library dependencies for libwinpr3.so.3
+			libswresample.so.5
+Adding library dependencies for libicuuc.so.76
+			libudfread.so.0
+			libmodplug.so.1
+Adding library dependencies for libcryptsetup.so.12
+Adding library dependencies for libavcodec.so.61
+			libicudata.so.76
+			libplutosvg.so.0
+			libk5crypto.so.3
+			libhwy.so.1
+			libk5crypto.so.3
+Adding library dependencies for libavutil.so.59
+Adding library dependencies for libldap.so.2
+Adding library dependencies for libgnutls.so.30
+			libdevmapper.so.1.02
+Adding library dependencies for libsndfile.so.1
+Adding library dependencies for libtirpc.so.3
+			libopenmpt.so.0
+			libbs2b.so.0
+Adding library dependencies for libgnome-desktop-3.so.20
+			librav1e.so.0
+			libvpx.so.9
+Adding library dependencies for libgtkmm-3.0.so.1
+			libva-drm.so.2
+			libunistring.so.5
+			libcairo-script-interpreter.so.2
+			libevent-2.1.so.7
+			libFLAC.so.12
+			libcom_err.so.2
+			libcom_err.so.2
+			libxkbregistry.so.0
+Adding library dependencies for libacl.so.1
+Adding library dependencies for libffado.so.2
+			libcom_err.so.2
+			libbrotlienc.so.1
+			libchromaprint.so.1
+			liblilv-0.so.0
+			libjson-c.so.5
+			libhogweed.so.6
+			libSvtAv1Enc.so.2
+			libva.so.2
+			libkrb5support.so.0
+			libsasl2.so.3
+			libpangomm-1.4.so.1
+			libiec61883.so.0
+			libaribcaption.so.1
+			libattr.so.1
+			libnettle.so.8
+			liburiparser.so.1
+			libmpg123.so.0
+			librubberband.so.3
+			libgmp.so.10
+			libva-x11.so.2
+			libaom.so.3
+			libraw1394.so.11
+			libkeyutils.so.1
+			libmysofa.so.1
+			libaribb24.so.0
+			libvdpau.so.1
+			librabbitmq.so.4
+			libconfig++.so.11
+			libflite_cmu_us_awb.so.1
+			libopencore-amrwb.so.0
+			librist.so.4
+			libvpl.so.2
+			libxml++-2.6.so.2
+			libflite_cmu_us_kal.so.1
+			libsrt.so.1.5
+			libzvbi.so.0
+			libOpenCL.so.1
+			libmvec.so.1
+			libflite_cmu_us_kal16.so.1
+			libsmbclient.so.0
+			libsnappy.so.1
+			libflite_cmu_us_rms.so.1
+			libzmq.so.5
+			libcodec2.so.1.2
+			libflite_cmu_us_slt.so.1
+			libilbc.so.3
+			libflite.so.1
+			libopencore-amrnb.so.0
+			libplacebo.so.349
+			libopenjp2.so.7
+			libvmaf.so.3
+			libspeex.so.1
+			libtesseract.so.5.5
+			libass.so.9
+			libtwolame.so.0
+			libvidstab.so.1.2
+			libvo-amrwbenc.so.0
+			libzimg.so.2
+			libxvidcore.so.4
+			libshaderc_shared.so.1
+			libqrencode.so.4
+Adding library dependencies for libbrotlidec.so.1
+Adding library dependencies for librist.so.4
+Adding library dependencies for libflite_cmu_us_awb.so.1
+Adding library dependencies for librubberband.so.3
+Adding library dependencies for libSvtAv1Enc.so.2
+Adding library dependencies for libass.so.9
+			libmbedcrypto.so.16
+			libflite_usenglish.so.1
+			libbrotlicommon.so.1
+Adding library dependencies for libsmbclient.so.0
+Adding library dependencies for liblilv-0.so.0
+			libfftw3.so.3
+			libunibreak.so.6
+Adding library dependencies for libcodec2.so.1.2
+Adding library dependencies for libzmq.so.5
+			libcpuinfo.so.24.09.26
+			libserd-0.so.0
+			liblpcnetfreedv.so.0.5
+			libcjson.so.1
+			libreplace-private-samba.so
+			libflite_cmulex.so.1
+Adding library dependencies for libflite_cmu_us_slt.so.1
+			libsodium.so.26
+Adding library dependencies for libtesseract.so.5.5
+Adding library dependencies for libplacebo.so.349
+Adding library dependencies for libplutosvg.so.0
+			libflite_cmulex.so.1
+			libsord-0.so.0
+			libleptonica.so.6
+			libdovi.so.3
+			libplutovg.so.1
+			libpgm-5.3.so.0
+			libsamba-errors.so.1
+			libsratom-0.so.0
+			libsamba-security-private-samba.so
+			libzix-0.so.0
+			libmsrpc3-private-samba.so
+			liblibcli-lsa3-private-samba.so
+			libsamba-hostconfig.so.0
+			libtevent-util.so.0
+			libsmbconf.so.0
+			libndr.so.6
+			liblibsmb-private-samba.so
+			libsamba-util.so.0
+			libsamba-credentials.so.1
+			libndr-standard.so.0
+			libgse-private-samba.so
+			libdcerpc-binding.so.0
+			libdcerpc-samba-private-samba.so
+			libsamba-debug-private-samba.so
+			libsamba3-util-private-samba.so
+			libgenrand-private-samba.so
+			libcli-smb-common-private-samba.so
+			libsecrets3-private-samba.so
+			libtevent.so.0
+			libtalloc.so.2
+Adding library dependencies for libcli-smb-common-private-samba.so
+Adding library dependencies for libsamba-security-private-samba.so
+Adding library dependencies for libleptonica.so.6
+Adding library dependencies for libsamba-util.so.0
+Adding library dependencies for libsamba3-util-private-samba.so
+Adding library dependencies for libsecrets3-private-samba.so
+Adding library dependencies for libdcerpc-samba-private-samba.so
+Adding library dependencies for libgse-private-samba.so
+Adding library dependencies for libtevent-util.so.0
+Adding library dependencies for libsamba-debug-private-samba.so
+Adding library dependencies for libsamba-hostconfig.so.0
+Adding library dependencies for libmsrpc3-private-samba.so
+Adding library dependencies for libsmbconf.so.0
+Adding library dependencies for libsamba-credentials.so.1
+Adding library dependencies for libdcerpc-binding.so.0
+			libstable-sort-private-samba.so
+Adding library dependencies for libndr-standard.so.0
+			libgif.so.7
+			libgensec-private-samba.so
+Adding library dependencies for liblibcli-lsa3-private-samba.so
+			libutil-tdb-private-samba.so
+			libutil-setid-private-samba.so
+			libsocket-blocking-private-samba.so
+			libndr-samba-private-samba.so
+			libcli-cldap-private-samba.so
+Adding library dependencies for liblibsmb-private-samba.so
+			libtime-basic-private-samba.so
+			libsocket-blocking-private-samba.so
+			libsamba-cluster-support-private-samba.so
+			libndr-samba4-private-samba.so
+			libserver-role-private-samba.so
+			libauthkrb5-private-samba.so
+			libiov-buf-private-samba.so
+			libsamba-sockets-private-samba.so
+			libkrb5samba-private-samba.so
+			libndr-nbt.so.0
+			libtime-basic-private-samba.so
+			libndr-samba-private-samba.so
+			libkrb5samba-private-samba.so
+			libCHARSET3-private-samba.so
+			libserver-id-db-private-samba.so
+			libnpa-tstream-private-samba.so
+			libsys-rw-private-samba.so
+			libldbsamba-private-samba.so
+			libsmb-transport-private-samba.so
+			libdbwrap-private-samba.so
+			libaddns-private-samba.so
+			libcliauth-private-samba.so
+			libcliauth-private-samba.so
+			libtalloc-report-printf-private-samba.so
+			libldb.so.2
+			libicui18n.so.76
+			libcli-ldap-common-private-samba.so
+			libutil-reg-private-samba.so
+			libsamdb-common-private-samba.so
+			libasn1util-private-samba.so
+			libcommon-auth-private-samba.so
+			libinterfaces-private-samba.so
+			libcli-ldap-private-samba.so
+			libsmbd-shim-private-samba.so
+			libmessages-dgm-private-samba.so
+			libcli-nbt-private-samba.so
+			libmessages-util-private-samba.so
+			libtdb-wrap-private-samba.so
+Adding library dependencies for libndr-samba-private-samba.so
+Adding library dependencies for libcli-ldap-private-samba.so
+Adding library dependencies for libsamdb-common-private-samba.so
+Adding library dependencies for libmessages-dgm-private-samba.so
+Adding library dependencies for libndr-samba4-private-samba.so
+Adding library dependencies for libgensec-private-samba.so
+Adding library dependencies for libaddns-private-samba.so
+Adding library dependencies for libauthkrb5-private-samba.so
+			libflag-mapping-private-samba.so
+Adding library dependencies for libcommon-auth-private-samba.so
+			libndr-krb5pac.so.0
+			libnetif-private-samba.so
+			libmsghdr-private-samba.so
+			libndr-krb5pac.so.0
+			libMESSAGING-SEND-private-samba.so
+			libclidns-private-samba.so
+			libsamba-modules-private-samba.so
+			libndr-krb5pac.so.0
+			libwbclient.so.0
+			libjansson.so.4
+			libsamdb.so.0
+Adding library dependencies for libsamdb.so.0
+			libcluster-private-samba.so
+
+Setting Zone Info File to Europe/Madrid
+
+Advanced Configuration and Power Interface support enabled
+
+
+Adding contributed files
+
+
+Building PKG Packages
+
+
+Building Module PKG Packages
+
+Running File System Fixups
+	Building Charmap Cache
+	Removing Extra Files
+	Running mkfontdir and mkfontscale
+	Caching pixbuf loaders
+	Caching gtk-2.0 immodules
+	Caching gtk-3.0 immodules
+	Compiling Schemas
+	Linking BusyBox
+
+	Running Finalize
+
+Creating group 'bin' with GID 1.
+Creating group 'daemon' with GID 2.
+Creating group 'sys' with GID 3.
+Creating group 'adm' with GID 4.
+Creating group 'tty' with GID 5.
+Creating group 'disk' with GID 6.
+Creating group 'lp' with GID 7.
+Creating group 'mem' with GID 8.
+Creating group 'kmem' with GID 9.
+Creating group 'wheel' with GID 10.
+Creating group 'cdrom' with GID 11.
+Creating group 'mail' with GID 12.
+Creating group 'man' with GID 15.
+Creating group 'dialout' with GID 18.
+Creating group 'floppy' with GID 19.
+Creating group 'games' with GID 20.
+Creating group 'utmp' with GID 22.
+Creating group 'tape' with GID 33.
+Creating group 'kvm' with GID 36.
+Creating group 'video' with GID 39.
+Creating group 'ftp' with GID 50.
+Creating group 'lock' with GID 54.
+Creating group 'audio' with GID 63.
+Creating group 'users' with GID 100.
+Creating group 'input' with GID 104.
+Creating group 'render' with GID 105.
+Creating group 'sgx' with GID 106.
+Creating group 'nobody' with GID 65534.
+Creating group 'network' with GID 40.
+Creating group 'fuse' with GID 25.
+Creating group 'sudo' with GID 28.
+Creating group 'autologin' with GID 621.
+Creating group 'systemd-journal' with GID 190.
+Creating group 'vboxsf' with GID 981.
+Creating group 'storage' with GID 999.
+Creating group 'uucp' with GID 998.
+Creating user 'bin' (bin) with UID 1 and GID 1.
+Creating user 'daemon' (daemon) with UID 2 and GID 2.
+Creating user 'adm' (adm) with UID 3 and GID 4.
+Creating user 'lp' (lp) with UID 4 and GID 7.
+Creating user 'sync' (sync) with UID 5 and GID 0.
+Creating user 'shutdown' (shutdown) with UID 6 and GID 0.
+Creating user 'halt' (halt) with UID 7 and GID 0.
+Creating user 'mail' (mail) with UID 8 and GID 12.
+Creating user 'operator' (operator) with UID 11 and GID 0.
+Creating user 'games' (games) with UID 12 and GID 100.
+Creating user 'ftp' (FTP User) with UID 14 and GID 50.
+Creating user 'nobody' (Kernel Overflow User) with UID 65534 and GID 65534.
+Creating group 'dbus' with GID 81.
+Creating user 'dbus' (System Message Bus) with UID 81 and GID 81.
+Creating group 'lightdm' with GID 987.
+Creating user 'lightdm' (LightDM daemon) with UID 987 and GID 987.
+Creating group 'pipewire' with GID 986.
+Creating user 'pipewire' (PipeWire System Daemon) with UID 986 and GID 986.
+Creating group 'polkitd' with GID 114.
+Creating user 'polkitd' (User for polkitd) with UID 114 and GID 114.
+Creating group 'systemd-coredump' with GID 970.
+Creating user 'systemd-coredump' (systemd Core Dumper) with UID 970 and GID 970.
+Creating group 'systemd-oom' with GID 971.
+Creating user 'systemd-oom' (systemd Userspace OOM Killer) with UID 971 and GID 971.
+Creating group 'systemd-resolve' with GID 193.
+Creating user 'systemd-resolve' (systemd Resolver) with UID 193 and GID 193.
+Creating group 'systemd-timesync' with GID 972.
+Creating user 'systemd-timesync' (systemd Time Synchronization) with UID 972 and GID 972.
+Creating user 'vboxadd' (VirtualBox Additions User) with UID 981 and GID 1.
+Created symlink '/etc/systemd/system/multi-user.target.wants/tsinit.target' -> '/etc/systemd/system/tsinit.target'.
+Created symlink '/etc/systemd/system/sysinit.target.wants/debug.service' -> '/etc/systemd/system/debug.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/crond.service' -> '/etc/systemd/system/crond.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/crontab.service' -> '/etc/systemd/system/crontab.service'.
+Created symlink '/etc/systemd/system/sysinit.target.wants/rtc_cmos.service' -> '/etc/systemd/system/rtc_cmos.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/pkg.service' -> '/etc/systemd/system/pkg.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/post-udev.service' -> '/etc/systemd/system/post-udev.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/profile-setup.service' -> '/etc/systemd/system/profile-setup.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/session.service' -> '/etc/systemd/system/session.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/session-setup.service' -> '/etc/systemd/system/session-setup.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/fastboot.service' -> '/etc/systemd/system/fastboot.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/gnome-core.service' -> '/etc/systemd/system/gnome-core.service'.
+Created symlink '/etc/systemd/system/display-manager.service' -> '/usr/local/lib/systemd/system/lightdm.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/systemd-vconsole-setup-reload.service' -> '/etc/systemd/system/systemd-vconsole-setup-reload.service'.
+Created symlink '/etc/systemd/system/dbus-org.freedesktop.timesync1.service' -> '/usr/local/lib/systemd/system/systemd-timesyncd.service'.
+Created symlink '/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service' -> '/usr/local/lib/systemd/system/systemd-timesyncd.service'.
+Created symlink '/etc/systemd/system/dbus-org.freedesktop.resolve1.service' -> '/usr/local/lib/systemd/system/systemd-resolved.service'.
+Created symlink '/etc/systemd/system/sysinit.target.wants/systemd-resolved.service' -> '/usr/local/lib/systemd/system/systemd-resolved.service'.
+Normalizing file/dir user and group ID's
+Created symlink '/etc/systemd/system/dbus-org.freedesktop.home1.service' -> '/usr/local/lib/systemd/system/systemd-homed.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/systemd-homed.service' -> '/usr/local/lib/systemd/system/systemd-homed.service'.
+Created symlink '/etc/systemd/system/systemd-homed.service.wants/systemd-homed-activate.service' -> '/usr/local/lib/systemd/system/systemd-homed-activate.service'.
+Created symlink '/etc/systemd/system/dbus-org.freedesktop.oom1.service' -> '/usr/local/lib/systemd/system/systemd-oomd.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/systemd-oomd.service' -> '/usr/local/lib/systemd/system/systemd-oomd.service'.
+Created symlink '/etc/systemd/system/sysinit.target.wants/systemd-pstore.service' -> '/usr/local/lib/systemd/system/systemd-pstore.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/xconf.service' -> '/etc/systemd/system/xconf.service'.
+	Caching icons
+Created symlink '/etc/systemd/system/tsinit.target.wants/update-ca-trust.service' -> '/etc/systemd/system/update-ca-trust.service'.
+Created symlink '/etc/systemd/system/dbus.service' -> '/usr/local/lib/systemd/system/dbus-broker.service'.
+Created symlink '/etc/systemd/user/dbus.service' -> '/usr/local/share/systemd/user/dbus-broker.service'.
+Created symlink '/etc/systemd/system/sockets.target.wants/dbus.socket' -> '/usr/local/lib/systemd/system/dbus.socket'.
+Created symlink '/etc/systemd/user/sockets.target.wants/dbus.socket' -> '/usr/local/share/systemd/user/dbus.socket'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/freerdp-init.service' -> '/etc/systemd/system/freerdp-init.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/pcscd.init.service' -> '/etc/systemd/system/pcscd.init.service'.
+Created symlink '/etc/systemd/system/sockets.target.wants/pcscd.socket' -> '/usr/local/lib/systemd/system/pcscd.socket'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/9p-kvm-mounts.service' -> '/etc/systemd/system/9p-kvm-mounts.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/9p-qemu-mounts.service' -> '/etc/systemd/system/9p-qemu-mounts.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/dropbear.service' -> '/etc/systemd/system/dropbear.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/audio.init.service' -> '/etc/systemd/system/audio.init.service'.
+Created symlink '/etc/systemd/system/tsinit.target.wants/git-init.service' -> '/etc/systemd/system/git-init.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/vmtoolsd.service' -> '/usr/local/lib/systemd/system/vmtoolsd.service'.
+Created symlink '/etc/systemd/system/vmtoolsd.service.requires/vgauthd.service' -> '/usr/local/lib/systemd/system/vgauthd.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/vmware-mounts.service' -> '/etc/systemd/system/vmware-mounts.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/vboxservice.service' -> '/usr/local/lib/systemd/system/vboxservice.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/xe-linux-distribution.service' -> '/usr/local/lib/systemd/system/xe-linux-distribution.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/autonet.service' -> '/etc/systemd/system/autonet.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/choose-network.service' -> '/etc/systemd/system/choose-network.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/hostname.service' -> '/etc/systemd/system/hostname.service'.
+
+Making initramfs - Fastboot Enabled
+Mode:                     real
+Method:                   sha256
+Files:                    9645
+Linked:                   266 files
+Compared:                 0 xattrs
+Compared:                 3001 files
+Saved:                    842.32 KiB
+Duration:                 0.046239 seconds
+	Making lib.squash
+Parallel mksquashfs: Using 16 processors
+Creating 4.0 filesystem on ../boot-images/initrd/lib.squash, block size 131072.
+[====-                                                       ]  2300/27411   8%[===========================================================/] 27411/27411 100%
+
+Exportable Squashfs 4.0 filesystem, xz compressed, data block size 131072
+	compressed data, compressed metadata, compressed fragments,
+	compressed xattrs, compressed ids
+	duplicates are removed
+Filesystem size 901693.53 Kbytes (880.56 Mbytes)
+	60.00% of uncompressed filesystem size (1502727.90 Kbytes)
+Inode table size 213920 bytes (208.91 Kbytes)
+	15.98% of uncompressed inode table size (1338584 bytes)
+Directory table size 225942 bytes (220.65 Kbytes)
+	32.81% of uncompressed directory table size (688703 bytes)
+Xattr table size 262 bytes (0.26 Kbytes)
+	32.67% of uncompressed xattr table size (802 bytes)
+Number of duplicate files found 287
+Number of inodes 23748
+Number of files 18094
+Number of fragments 2937
+Number of symbolic links 2834
+Number of device nodes 0
+Number of fifo nodes 0
+Number of socket nodes 0
+Number of directories 2820
+Number of hard-links 266
+Number of ids (unique uids + gids) 2
+Number of uids 1
+	root (0)
+Number of gids 2
+	root (0)
+	unknown (25)
+	Fixing-Up links
+Mode:                     real
+Method:                   sha256
+Files:                    7307
+Linked:                   37 files
+Compared:                 0 xattrs
+Compared:                 1913 files
+Saved:                    47.94 KiB
+Duration:                 0.022240 seconds
+	Setting all timestamps to 202606050000
+.........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+598870 blocks
+
+Making boot image for grub Type....
+
+14824+0 records in
+14824+0 records out
+15179776 bytes (15 MB, 14 MiB) copied, 0.0197468 s, 769 MB/s
+mkfs.fat 4.2 (2021-01-31)
+xorriso 1.5.8 : RockRidge filesystem manipulator, libburnia project.
+
+
+Notes about build:
+Kernel 6.19.14-108.fc42.x86_64 size is 17807K
+Initrd size is 207135K
+Squash size is 901696K
+
+Build Complete!

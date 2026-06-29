@@ -1,0 +1,7 @@
+Name: IAC-IESMHP Docker rootless prep (subuid + lingering)
+Default: yes
+Priority: 128
+Session-Interactive-Only: yes
+Session-Type: Additional
+Session:
+	optional	pam_exec.so quiet /usr/local/sbin/iac-docker-rootless-prep.sh

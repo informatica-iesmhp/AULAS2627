@@ -1,0 +1,13 @@
+# /etc/krb5.conf — desplegado por Ansible (rol preparaAD). NO editar a mano:
+# los cambios se pisan en el siguiente pase del rol.
+[libdefaults]
+    default_realm = {{ preparaad_dominio_efectivo | trim | upper }}
+    # Los KDC se localizan por DNS (registros SRV _kerberos._tcp del dominio),
+    # sin codificarlos a fuego: sobrevive a cambios de controladores.
+    dns_lookup_kdc = true
+    dns_lookup_realm = false
+    # AD no necesita resolución inversa y con DNS de aula suele fallar.
+    rdns = false
+    ticket_lifetime = 24h
+    renew_lifetime = 7d
+    forwardable = true

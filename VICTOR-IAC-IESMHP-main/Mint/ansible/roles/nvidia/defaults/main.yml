@@ -1,0 +1,2 @@
+required_kernel: "6.8.0-62-generic"
+required_nvidia_driver: "535"

@@ -1,0 +1,26 @@
+---
+# Rol basicos — comprobaciones base del equipo Windows 11.
+# Equivalente Windows del rol 'basicos' de Ubuntu: deja listas las herramientas
+# que el resto de roles dan por hechas (proveedor de paquetes + winget).
+
+- name: Asegurar el proveedor NuGet de PowerShell
+  ansible.windows.win_shell: |
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+      Write-Output "NUGET-INSTALADO"
+    }
+  register: nuget
+  changed_when: "'NUGET-INSTALADO' in nuget.stdout"
+
+- name: Comprobar que winget (App Installer) esta disponible
+  ansible.windows.win_shell: winget --version
+  register: winget_ver
+  changed_when: false
+  failed_when: false
+
+- name: Avisar si winget no esta disponible
+  ansible.builtin.debug:
+    msg: >-
+      winget NO esta disponible (falta App Installer). Los roles que dependen de
+      winget (p.ej. los que no estan en Chocolatey) podrian fallar.
+  when: winget_ver.rc != 0

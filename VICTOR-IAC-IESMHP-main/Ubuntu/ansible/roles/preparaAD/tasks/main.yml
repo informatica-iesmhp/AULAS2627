@@ -1,0 +1,611 @@
+# ===========================================================================
+# Rol preparaAD — deja el equipo PREPARADO para unirse a un dominio AD
+# ---------------------------------------------------------------------------
+# Hace SIEMPRE (genérico, sin necesitar conocer el dominio):
+#   1. Instala el stack realmd + SSSD + adcli + Kerberos (prerequisitos según
+#      la doc oficial de Ubuntu: sssd-ad, sssd-tools, realmd, adcli).
+#   2. Activa pam_mkhomedir (crea el home en el primer login de un usuario
+#      del dominio; en Ubuntu NO viene activo, a diferencia de RHEL).
+#   3. Comprueba la sincronización horaria (Kerberos tolera ±5 min con el DC)
+#      y el tamaño del hostname (NetBIOS de AD ≤ 15 caracteres).
+#   4. Comprueba si el equipo YA está unido a un dominio (realm list).
+# Solo si se conoce el dominio (preparaad_dominio o equipo ya unido):
+#   5. Despliega /etc/krb5.conf con el realm por defecto (kinit directo).
+#   6. realm discover — ¿se resuelve el dominio por DNS? NO falla el play.
+#      Si NO resuelve y hay preparaad_dominio_dnss: fuerza split-DNS hacia
+#      los DC (drop-in de systemd-resolved, solo consultas del dominio),
+#      reinicia systemd-resolved y reintenta el discover.
+#   6b. Si el dominio termina en .local: antepone `dns` a `mdns4_minimal`
+#      en /etc/nsswitch.conf para que ping/kinit/adcli (getaddrinfo) lleguen
+#      a systemd-resolved en vez de morir en el mDNS (.local es el TLD de
+#      mDNS y el [NOTFOUND=return] de Ubuntu corta la cadena).
+# Solo si preparaad_unir=true + credenciales (vault / -e):
+#   7. realm join desatendido + verificación de que quedó unido.
+# Solo con el equipo YA unido:
+#   8. Snippet /etc/sssd/conf.d/10-iac-ad.conf con las opciones del IES.
+#
+# ¿Por qué el snippet conf.d SOLO tras la unión? El sssd.service de
+# Debian/Ubuntu lleva ConditionPathExists=/etc/sssd/sssd.conf y
+# ConditionDirectoryNotEmpty=/etc/sssd/conf.d/: antes de unir no existe
+# sssd.conf (lo escribe realmd al unir) y la unidad se SALTA limpiamente.
+# Si dejáramos un snippet pre-unión, sssd arrancaría sin dominios y quedaría
+# como unidad FALLIDA en cada boot (saltaría la sección 8 de
+# 4-Comprobaciones.sh).
+#
+# OJO primer arranque (bugs 2026-05-17): NO usar el módulo systemd con
+# enabled:/daemon_reload: (se cuelga dentro de 3-SetupPrimerInicio.service).
+# Aquí solo se usa state: restarted/started, que no cuelga. realmd habilita
+# sssd.service él mismo al unir (fuera de Ansible, no le afecta el bug).
+# tags: preparaad, ad
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 0. Entorno AD (único punto de cambio: dominio, DNS, OU, cuenta, NTP)
+# ---------------------------------------------------------------------------
+# Carga ../entornoAD.yml — la MISMA fuente de verdad que leen los scripts de
+# utilesAD/. Cambiar el dominio (producción ⇄ pruebas) = editar SOLO ese
+# fichero. -e sigue pisando estos valores (extra-vars > include_vars).
+- name: Cargar el entorno AD (dominio/DNS/OU desde entornoAD.yml)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/entornoAD.yml"
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 1. Stack de unión a dominio
+# ---------------------------------------------------------------------------
+# El módulo apt exporta DEBIAN_FRONTEND=noninteractive, así que krb5-user no
+# pregunta el realm por debconf (lo fija el krb5.conf del paso 5).
+- name: Instalar el stack de unión a dominio (realmd, SSSD, adcli, Kerberos)
+  ansible.builtin.apt:
+    name: "{{ preparaad_paquetes }}"
+    state: present
+    update_cache: false
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 2. pam_mkhomedir — home automático en el primer login de dominio
+# ---------------------------------------------------------------------------
+- name: Comprobar si pam_mkhomedir ya está activo
+  ansible.builtin.command: grep -q pam_mkhomedir.so /etc/pam.d/common-session
+  register: preparaad_mkhomedir
+  changed_when: false
+  failed_when: false
+  tags: [preparaad, ad]
+
+- name: Activar pam_mkhomedir (pam-auth-update --enable mkhomedir)
+  ansible.builtin.command: pam-auth-update --enable mkhomedir
+  when: preparaad_mkhomedir.rc != 0
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 2b. SSH — login de usuarios del dominio (UsePAM en sshd)
+# ---------------------------------------------------------------------------
+# Los usuarios del DOMINIO autentican por PAM->pam_sss: su contraseña vive en
+# AD, NO en /etc/shadow. El default COMPILADO de OpenSSH es `UsePAM no`, con el
+# que sshd valida la contraseña contra el shadow local -> para un usuario de
+# dominio (sin entrada en shadow) falla SIEMPRE con "Could not get shadow
+# information for <user>" + "Failed password", aunque GDM y RDP sí entren (esos
+# pasan por PAM). El sshd_config de Ubuntu 26.04 viene SIN línea UsePAM, así que
+# cae al default `no`. El drop-in lo fuerza a `yes`. MISMO fichero y contenido
+# que escribe 3-SetupPrimerInicio.sh en el primer arranque (mantener en sync).
+# Se aplica SIEMPRE (no solo con el equipo unido): `UsePAM yes` es además el
+# valor por defecto y seguro de Ubuntu, e idempotente entre el script y el rol.
+- name: Permitir el login SSH de usuarios del dominio (UsePAM en sshd)
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/60-iac-ad.conf
+    content: |
+      # Desplegado por Ansible (rol preparaAD) y por 3-SetupPrimerInicio.sh
+      # (mismo contenido; mantener en sync). Permite el login SSH de usuarios
+      # del dominio AD vía PAM->pam_sss (sin esto: "Could not get shadow
+      # information for <user>" + "Failed password" pese a que GDM/RDP van).
+      UsePAM yes
+      PasswordAuthentication yes
+      KbdInteractiveAuthentication yes
+    owner: root
+    group: root
+    mode: "0644"
+  register: preparaad_ssh_dropin
+  tags: [preparaad, ad]
+
+# El drop-in SOLO surte efecto si sshd_config tiene `Include
+# /etc/ssh/sshd_config.d/*.conf`. En instalaciones desde squashfs con
+# --force-confold puede conservarse un sshd_config viejo SIN esa línea: entonces
+# sshd IGNORA sshd_config.d/* y cae al UsePAM=no compilado -> el usuario del
+# dominio entra por GDM/RDP pero NO por SSH (síntoma 2026-06-17). Se garantiza al
+# PRINCIPIO del fichero (en sshd_config gana la 1ª aparición de cada opción).
+# lineinfile idempotente: si el Include ya está (regexp casa) no toca nada.
+- name: Garantizar la directiva Include en sshd_config (si no, el drop-in se ignora)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    regexp: '^\s*Include\s+/etc/ssh/sshd_config\.d/\*\.conf\s*$'
+    insertbefore: BOF
+    owner: root
+    group: root
+    mode: "0644"
+  register: preparaad_ssh_include
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 2c. SSH — subsistema SFTP (sftp:// en GNOME Files Wayland, 'sftp', 'scp')
+# ---------------------------------------------------------------------------
+# El binario /usr/lib/openssh/sftp-server vive en el paquete APARTE
+# openssh-sftp-server (solo "Recommends" de openssh-server) y la directiva
+# 'Subsystem sftp' falta en el sshd_config reducido de Ubuntu 26.04 (instalación
+# squashfs + --force-confold). Sin ambos, sftp:// en GNOME Files, 'sftp' y 'scp'
+# (OpenSSH >=9 transfiere por el protocolo SFTP) fallan con "subsystem request
+# failed on channel 0". No es específico de AD, pero vive aquí junto al resto de
+# la config de sshd. MISMO arreglo que 3-SetupPrimerInicio.sh (mantener en sync).
+- name: Instalar el servidor SFTP de OpenSSH (binario /usr/lib/openssh/sftp-server)
+  ansible.builtin.apt:
+    name: openssh-sftp-server
+    state: present
+    update_cache: false
+  register: preparaad_sftp_pkg
+  tags: [preparaad, ad, sftp]
+
+# OpenSSH ABORTA si 'Subsystem sftp' se define dos veces (sshd_config + drop-in),
+# así que solo lo añadimos si NO hay ya uno ACTIVO en ningún sitio.
+- name: Detectar si ya hay un 'Subsystem sftp' activo en la config de sshd
+  ansible.builtin.command:
+    cmd: grep -rqsE '^[[:space:]]*Subsystem[[:space:]]+sftp' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/
+  register: preparaad_sftp_presente
+  changed_when: false
+  failed_when: false
+  tags: [preparaad, ad, sftp]
+
+- name: Añadir 'Subsystem sftp' a sshd_config si falta (si no, sftp:// y scp fallan)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    line: Subsystem sftp /usr/lib/openssh/sftp-server
+    insertafter: EOF
+    owner: root
+    group: root
+    mode: "0644"
+  when: preparaad_sftp_presente.rc != 0
+  register: preparaad_sftp_dropin
+  tags: [preparaad, ad, sftp]
+
+# restart NO cuelga el primer arranque (bugs 2026-05-17: cuelgan
+# enabled:/daemon_reload:). sshd relee la config al reiniciar; las conexiones
+# SSH ya establecidas SOBREVIVEN al restart del daemon (no corta el pase de aula).
+- name: Reiniciar ssh para aplicar UsePAM y el subsistema SFTP
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
+  when: >
+    preparaad_ssh_dropin is changed or preparaad_ssh_include is changed
+    or preparaad_sftp_pkg is changed or preparaad_sftp_dropin is changed
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 3. Reloj (Kerberos) y hostname (NetBIOS)
+# ---------------------------------------------------------------------------
+# Kerberos exige desfase < 5 min con el DC. Se apunta el cliente NTP del equipo
+# al NTP del dominio (normalmente el propio DC). El cliente NTP varía según la
+# base: Ubuntu Desktop trae systemd-timesyncd; Mint/Debian con chrony usan
+# chrony (y NO traen timesyncd). El rol detecta cuál hay y configura ESE, con
+# PRIORIDAD a chrony (si está instalado suele enmascarar timesyncd).
+- name: Configurar el NTP del dominio (chrony o systemd-timesyncd)
+  when: preparaad_ntp != ''
+  tags: [preparaad, ad]
+  block:
+    - name: Listar los unit files de systemd (para detectar el cliente NTP)
+      ansible.builtin.command: systemctl list-unit-files --type=service --no-legend
+      register: preparaad_units
+      changed_when: false
+
+    - name: Determinar el cliente NTP presente
+      ansible.builtin.set_fact:
+        preparaad_ntp_chrony: "{{ 'chrony.service' in preparaad_units.stdout or 'chronyd.service' in preparaad_units.stdout }}"
+        preparaad_ntp_timesyncd: "{{ 'systemd-timesyncd.service' in preparaad_units.stdout }}"
+        preparaad_chrony_svc: "{{ 'chronyd.service' if 'chronyd.service' in preparaad_units.stdout else 'chrony.service' }}"
+
+    # --- chrony (Mint/Debian con chrony, RHEL…) --------------------------
+    - name: Apuntar chrony al NTP del dominio
+      when: preparaad_ntp_chrony | bool
+      block:
+        - name: Localizar el chrony.conf (Debian vs resto)
+          ansible.builtin.stat:
+            path: /etc/chrony/chrony.conf
+          register: preparaad_chrony_deb
+
+        - name: Escribir el NTP del dominio en chrony.conf
+          ansible.builtin.blockinfile:
+            path: "{{ '/etc/chrony/chrony.conf' if preparaad_chrony_deb.stat.exists else '/etc/chrony.conf' }}"
+            create: false
+            marker: "# {mark} IAC-IESMHP preparaAD (NTP del dominio AD)"
+            block: |
+              # Kerberos exige desfase < 5 min con el controlador de dominio.
+              # 'prefer trust' = fuente preferida y de confianza (suele ser la
+              # única alcanzable en el aula; el pool de internet no llega).
+              {% for ntp in preparaad_ntp.split(',') %}
+              server {{ ntp | trim }} iburst prefer trust
+              {% endfor %}
+              # Los DC Windows (w32time) suelen anunciar una distancia de raíz
+              # alta (~10 s, dispersión del reloj CMOS si el DC no sincroniza
+              # con un NTP fiable). chrony, con su maxdistance por defecto de
+              # 3 s, marca la fuente '^?' (inutilizable) y NUNCA la selecciona:
+              # 'makestep'/'waitsync' se quedan sin fuente y el reloj jamás da
+              # el salto (NTPSynchronized=no). Para Kerberos basta < 5 min, así
+              # que relajamos maxdistance para aceptar el DC pese a su
+              # dispersión. (El arreglo de fondo es sincronizar el w32time del
+              # DC con un NTP fiable; ver CLAUDE.md del rol.)
+              maxdistance 16.0
+          register: preparaad_chrony_conf
+
+        # restart NO cuelga el primer arranque (los que cuelgan son
+        # enabled:/daemon_reload: — bugs 2026-05-17).
+        - name: Reiniciar chrony con el NTP nuevo
+          ansible.builtin.systemd:
+            name: "{{ preparaad_chrony_svc }}"
+            state: restarted
+          when: preparaad_chrony_conf is changed
+
+        # Ajuste inmediato + ESPERA. Tras el restart chrony AÚN no tiene muestras
+        # del NTP (el iburst tarda unos segundos): un `makestep` lanzado al
+        # instante es un no-op y la unión que viene a continuación pillaría el
+        # reloj aún desfasado (causa del "join a medias" del 2026-06-15). Por eso
+        # se ARMA el salto para las próximas muestras (makestep <umbral> <nº>, no
+        # slew) y se ESPERA a que sincronice de verdad antes de seguir.
+        - name: Armar el salto del reloj para las próximas muestras (chrony)
+          ansible.builtin.command: chronyc makestep 0.1 3
+          changed_when: false
+          failed_when: false
+
+        # waitsync <intentos> <corrección máx> <skew> <intervalo>: bloquea hasta
+        # que el reloj quede dentro de 0.05 s o agote ~30 s (30×1 s). best-effort:
+        # si expira no falla el play; el resumen final dirá si quedó sincronizado.
+        - name: Esperar a que chrony sincronice el reloj (waitsync, máx ~30 s)
+          ansible.builtin.command: chronyc waitsync 30 0.05 0 1
+          changed_when: false
+          failed_when: false
+
+    # --- systemd-timesyncd (Ubuntu Desktop por defecto) -----------------
+    - name: Apuntar systemd-timesyncd al NTP del dominio
+      when:
+        - not (preparaad_ntp_chrony | bool)
+        - preparaad_ntp_timesyncd | bool
+      block:
+        - name: Crear el directorio de configuración de systemd-timesyncd
+          ansible.builtin.file:
+            path: /etc/systemd/timesyncd.conf.d
+            state: directory
+            mode: "0755"
+
+        - name: Escribir el NTP del dominio en timesyncd
+          ansible.builtin.copy:
+            dest: /etc/systemd/timesyncd.conf.d/50-iac-ad.conf
+            content: |
+              # Desplegado por Ansible (rol preparaAD): NTP del dominio AD.
+              # Kerberos exige desfase < 5 min con el controlador de dominio.
+              [Time]
+              NTP={{ preparaad_ntp.split(',') | map('trim') | join(' ') }}
+            owner: root
+            group: root
+            mode: "0644"
+          register: preparaad_ntp_conf
+
+        # restart NO cuelga el primer arranque (bugs 2026-05-17). timesyncd
+        # relee su configuración al reiniciar, sin daemon-reload.
+        - name: Reiniciar systemd-timesyncd con el NTP nuevo
+          ansible.builtin.systemd:
+            name: systemd-timesyncd.service
+            state: restarted
+          when: preparaad_ntp_conf is changed
+
+        # Esperar a la sincronización igual que en chrony: timesyncd da el salto
+        # del reloj al primer contacto, pero la corrección es asíncrona y la
+        # unión vendría a continuación. Se sondea NTPSynchronized hasta 'yes' o
+        # ~30 s (10×3 s). Sin `when`: en re-pases (conf sin cambios) confirma que
+        # el reloj ya está bien sin reiniciar el servicio. best-effort.
+        - name: Esperar a que systemd-timesyncd sincronice el reloj (máx ~30 s)
+          ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+          register: preparaad_ts_wait
+          until: preparaad_ts_wait.stdout == 'yes'
+          retries: 10
+          delay: 3
+          changed_when: false
+          failed_when: false
+
+    # --- ninguno conocido -----------------------------------------------
+    - name: Avisar si no hay cliente NTP conocido (ni chrony ni timesyncd)
+      ansible.builtin.debug:
+        msg: >-
+          AVISO: preparaad_ntp='{{ preparaad_ntp }}' pero no se encontró ni
+          chrony ni systemd-timesyncd. El reloj NO se ha apuntado al DC;
+          Kerberos puede fallar por desfase. Instala uno de los dos.
+      when:
+        - not (preparaad_ntp_chrony | bool)
+        - not (preparaad_ntp_timesyncd | bool)
+
+- name: Leer si el reloj está sincronizado por NTP
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: preparaad_ntpsync
+  changed_when: false
+  failed_when: false
+  tags: [preparaad, ad]
+
+# AD trunca el nombre de equipo a 15 caracteres (NetBIOS): dos hostnames que
+# compartan los primeros 15 colisionarían en la misma cuenta de equipo.
+# Los IABD-NN / SMRD-NN del IES van sobrados; esto es una red de seguridad.
+- name: Avisar si el hostname supera los 15 caracteres (límite NetBIOS de AD)
+  ansible.builtin.debug:
+    msg: >-
+      AVISO: el hostname '{{ ansible_hostname }}' tiene
+      {{ ansible_hostname | length }} caracteres (> 15). AD lo truncará al
+      crear la cuenta de equipo — riesgo de colisión de nombres.
+  when: ansible_hostname | length > 15
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 4. ¿Ya está unido a un dominio?
+# ---------------------------------------------------------------------------
+# `realm list --name-only` imprime una línea por dominio configurado y nada
+# si no hay ninguno. Es la fuente de verdad de realmd/SSSD.
+- name: Comprobar si el equipo ya está unido a un dominio
+  ansible.builtin.command: realm list --name-only
+  register: preparaad_realm
+  changed_when: false
+  failed_when: false
+  tags: [preparaad, ad]
+
+- name: Registrar el estado de unión y el dominio efectivo
+  ansible.builtin.set_fact:
+    preparaad_unido: "{{ (preparaad_realm.stdout | trim) != '' }}"
+    # Dominio a usar en krb5.conf/snippet: el de la variable o, si el equipo
+    # ya está unido, el que diga realmd (cubre re-pases sin la variable).
+    preparaad_dominio_efectivo: >-
+      {{ preparaad_dominio if preparaad_dominio != ''
+         else (preparaad_realm.stdout_lines | first | default('')) }}
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 5. /etc/krb5.conf — realm por defecto (solo si se conoce el dominio)
+# ---------------------------------------------------------------------------
+# Deja `kinit usuario` funcionando sin teclear el realm. Los KDC se localizan
+# por DNS (registros SRV del dominio), sin codificarlos a fuego. Machaca el
+# krb5.conf de paquete (que queda sin realm al instalar noninteractive).
+- name: Desplegar /etc/krb5.conf con el realm del dominio
+  ansible.builtin.template:
+    src: krb5.conf.j2
+    dest: /etc/krb5.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: preparaad_dominio_efectivo | trim != ''
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 6. ¿Se ve el dominio desde aquí? Si no, forzar split-DNS hacia los DC
+# ---------------------------------------------------------------------------
+- name: Descubrir el dominio por DNS (realm discover)
+  ansible.builtin.command: realm discover {{ preparaad_dominio | quote }}
+  register: preparaad_discover
+  changed_when: false
+  failed_when: false
+  when: preparaad_dominio != ''
+  tags: [preparaad, ad]
+
+# Si el dominio NO se resuelve (lo típico: el DHCP del aula no reparte el DNS
+# del dominio), se fuerza un DNS dividido (split-DNS) vía systemd-resolved:
+# las consultas de *.dominio van a los DC (preparaad_dominio_dnss) y TODO lo
+# demás sigue saliendo por el DNS del aula. No se toca NetworkManager ni la
+# configuración por interfaz: el drop-in es global y sobrevive a cambios de
+# conexión. (Ubuntu Desktop 26.04 usa systemd-resolved de serie.)
+- name: Forzar el DNS del dominio hacia los DC (solo si no se resuelve)
+  when:
+    - preparaad_dominio != ''
+    - preparaad_dominio_dnss != ''
+    - (preparaad_discover.rc | default(0)) != 0
+  tags: [preparaad, ad]
+  block:
+    - name: Crear el directorio de configuración de systemd-resolved
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Enrutar las consultas del dominio a los DC (split-DNS)
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/50-iac-ad.conf
+        content: |
+          # Desplegado por Ansible (rol preparaAD): el DNS del aula no
+          # resuelve el dominio AD. Split-DNS: SOLO las consultas de
+          # {{ preparaad_dominio }} van a los controladores de dominio; el
+          # resto sigue por el DNS que reparte el DHCP del aula.
+          [Resolve]
+          DNS={{ preparaad_dominio_dnss.split(',') | map('trim') | join(' ') }}
+          Domains=~{{ preparaad_dominio }}
+        owner: root
+        group: root
+        mode: "0644"
+      register: preparaad_dns_dropin
+
+    # restart NO cuelga el primer arranque (bugs 2026-05-17: solo
+    # enabled:/daemon_reload: cuelgan). Si el drop-in ya estaba (re-pase con
+    # el DNS aún roto), no se reinicia: no aportaría nada.
+    - name: Reiniciar systemd-resolved con el split-DNS
+      ansible.builtin.systemd:
+        name: systemd-resolved.service
+        state: restarted
+      when: preparaad_dns_dropin is changed
+
+    - name: Reintentar el descubrimiento del dominio (con split-DNS)
+      ansible.builtin.command: realm discover {{ preparaad_dominio | quote }}
+      register: preparaad_discover
+      changed_when: false
+      failed_when: false
+
+# ---------------------------------------------------------------------------
+# 6b. nsswitch.conf — dominios .local vs mDNS
+# ---------------------------------------------------------------------------
+# `.local` es el TLD reservado para mDNS (RFC 6762). La línea hosts de Ubuntu
+# Desktop (`files mdns4_minimal [NOTFOUND=return] dns`) hace que getaddrinfo()
+# —lo que usan ping, kinit y adcli— corte en el mDNS para CUALQUIER *.local y
+# NUNCA pregunte a systemd-resolved: aunque el split-DNS de arriba funcione,
+# `ping iesmhp.local` falla y la unión (kinit/adcli resuelven los DC por esta
+# ruta) puede fallar. `realm discover` y SSSD no lo sufren porque no pasan
+# por nsswitch (resolver propio), de ahí el "visible por DNS: SÍ" engañoso.
+# Arreglo: anteponer `dns` al mDNS. Los nombres mDNS legítimos
+# (impresora.local…) siguen funcionando: resolved responde "no existe" al
+# instante a los .local sin routing domain y la cadena continúa hasta
+# mdns4_minimal. Idempotente: tras el cambio el regex ya no casa. Sin
+# reinicios: glibc relee el orden en la siguiente resolución.
+- name: Anteponer dns a mdns4_minimal en nsswitch.conf (dominio .local)
+  ansible.builtin.replace:
+    path: /etc/nsswitch.conf
+    regexp: '^(hosts:\s+files\s+)mdns4_minimal\s+\[NOTFOUND=return\]\s+dns'
+    replace: '\1dns mdns4_minimal [NOTFOUND=return]'
+  register: preparaad_nsswitch
+  when:
+    - preparaad_arregla_nsswitch | bool
+    - preparaad_dominio.endswith('.local')
+  tags: [preparaad, ad]
+
+# Para el resumen: detecta líneas hosts no estándar donde el regex de arriba
+# no casó y el mDNS sigue cortando antes que dns.
+- name: Leer la línea hosts de nsswitch.conf
+  ansible.builtin.command: grep '^hosts:' /etc/nsswitch.conf
+  register: preparaad_nsswitch_linea
+  changed_when: false
+  failed_when: false
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 7. Unión al dominio (SOLO bajo demanda: preparaad_unir=true + credenciales)
+# ---------------------------------------------------------------------------
+- name: Unión al dominio (realm join desatendido)
+  when:
+    - preparaad_unir | bool
+    - not (preparaad_unido | bool)
+    - preparaad_dominio != ''
+    - preparaad_usuario_union != ''
+    - preparaad_password_union != ''
+  tags: [preparaad, ad]
+  block:
+    # realm join lee la contraseña por stdin con --unattended (sin tty).
+    # Escribe /etc/sssd/sssd.conf, crea la cuenta de equipo + keytab
+    # (/etc/krb5.keytab) y habilita+arranca sssd.service él mismo.
+    #
+    # preparaad_membership_software (de entornoAD.yml): vacío = adcli (default,
+    # Windows AD); "samba" = realmd delega en `net ads join`, que fija la
+    # contraseña de máquina por netlogon en vez de por kpasswd (NECESARIO contra
+    # DC Samba, donde adcli falla con "Message stream modified"). Con samba se
+    # fuerza --client-software=sssd para conservar SSSD como cliente de identidad.
+    - name: Unir el equipo al dominio {{ preparaad_dominio }}
+      ansible.builtin.shell: >-
+        echo '{{ preparaad_password_union }}' |
+        realm join --unattended
+        --user={{ preparaad_usuario_union | quote }}
+        {% if (preparaad_membership_software | default('')) != '' %}--membership-software={{ preparaad_membership_software }} --client-software=sssd{% endif %}
+        {% if preparaad_ou != '' %}--computer-ou={{ preparaad_ou | quote }}{% endif %}
+        {{ preparaad_dominio | quote }}
+      no_log: true            # contiene la contraseña de unión
+
+    - name: Releer el estado de unión tras el join
+      ansible.builtin.command: realm list --name-only
+      register: preparaad_realm_post
+      changed_when: false
+      failed_when: false
+
+    - name: Actualizar el estado de unión
+      ansible.builtin.set_fact:
+        preparaad_unido: "{{ (preparaad_realm_post.stdout | trim) != '' }}"
+
+    # Post-condición ruidosa (mismo criterio que el rol rdp): si el join no
+    # cuajó, el play debe FALLAR, no terminar "ok" con el equipo fuera.
+    - name: Verificar que el equipo quedó unido al dominio
+      ansible.builtin.fail:
+        msg: >-
+          realm join terminó pero `realm list` sigue vacío: el equipo NO
+          quedó unido a {{ preparaad_dominio }}. Revisar DNS hacia el DC,
+          reloj y permisos del usuario de unión.
+      when: not (preparaad_unido | bool)
+
+# ---------------------------------------------------------------------------
+# 8. Opciones SSSD del IES (snippet conf.d) — SOLO con el equipo ya unido
+# ---------------------------------------------------------------------------
+# sssd fusiona conf.d/*.conf POR ENCIMA del sssd.conf que escribió realmd,
+# así que aquí se ajusta sin tocar su fichero. Permisos 0600 obligatorios
+# (sssd se niega a arrancar si el conf.d es legible por otros).
+- name: Desplegar las opciones SSSD del IES (conf.d, pisa lo de realmd)
+  ansible.builtin.template:
+    src: 10-iac-ad.conf.j2
+    dest: /etc/sssd/conf.d/10-iac-ad.conf
+    owner: root
+    group: root
+    mode: "0600"
+  when: preparaad_unido | bool and (preparaad_dominio_efectivo | trim) != ''
+  register: preparaad_snippet
+  tags: [preparaad, ad]
+
+- name: Reiniciar sssd para aplicar el snippet
+  ansible.builtin.systemd:
+    name: sssd.service
+    state: restarted
+  when: preparaad_snippet is changed
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 8b. pam_sss / nss 'sss' — red de seguridad para RE-UNIONES
+# ---------------------------------------------------------------------------
+# En una instalación NUEVA el postinst de libpam-sss enciende el perfil 'sss'
+# de pam-auth-update al instalar el paquete (pam_sss entra en /etc/pam.d/
+# common-*) y realmd repone 'sss' en nsswitch al unir → el login de dominio
+# funciona a la primera. PERO 4-SacaDelDominio.sh (paso 6) los RETIRA al salir
+# (`pam-auth-update --disable sss` + quita 'sss' de nsswitch) para que pam_sss
+# no quede apuntando a un sssd muerto (greeter de GDM / handover RDP en negro).
+# Al RE-UNIR, los paquetes YA están instalados → su postinst NO se re-ejecuta y
+# `realm join` NO vuelve a tocar pam-auth-update → pam_sss se queda FUERA del
+# stack → el equipo aparece UNIDO pero NINGÚN usuario del dominio puede hacer
+# login: el greeter pinta (el handover RDP llega a la ventana de usuarios) pero
+# la fase auth/account de PAM no consulta a SSSD. Este bloque lo repone — es el
+# INVERSO del paso 6 del leave. Idempotente: solo actúa si falta. Solo con el
+# equipo ya unido (en instalación nueva pam_sss ya está → no-op).
+- name: Comprobar si pam_sss está en el stack PAM (equipo unido)
+  ansible.builtin.command: grep -q pam_sss /etc/pam.d/common-auth
+  register: preparaad_pam_sss
+  changed_when: false
+  failed_when: false
+  when: preparaad_unido | bool
+  tags: [preparaad, ad]
+
+- name: Re-activar pam_sss en el stack PAM (pam-auth-update --enable sss)
+  ansible.builtin.command: pam-auth-update --enable sss
+  when:
+    - preparaad_unido | bool
+    - preparaad_pam_sss.rc is defined
+    - preparaad_pam_sss.rc != 0
+  tags: [preparaad, ad]
+
+# realm join suele reponer 'sss' en nsswitch, pero 4-SacaDelDominio.sh lo quita
+# y no hay garantía de que realmd lo vuelva a poner en una re-unión → sin 'sss'
+# en passwd/group, `getent passwd <usuario_dominio>` falla y el login también.
+# lineinfile con backrefs: si el lookahead (?!.*\bsss\b) ya no casa (sss
+# presente) NO toca la línea → idempotente, sin duplicar 'sss'.
+- name: Reponer 'sss' en passwd/group de nsswitch.conf (equipo unido)
+  ansible.builtin.lineinfile:
+    path: /etc/nsswitch.conf
+    regexp: '^({{ item }}:\s+(?!.*\bsss\b).*\S)\s*$'
+    line: '\1 sss'
+    backrefs: true
+  loop:
+    - passwd
+    - group
+  when: preparaad_unido | bool
+  tags: [preparaad, ad]
+
+# ---------------------------------------------------------------------------
+# 9. Resumen del estado (sale en el log del play / 3-SetupPrimerInicio)
+# ---------------------------------------------------------------------------
+- name: Resumen preparaAD
+  ansible.builtin.debug:
+    msg:
+      - "Unido a dominio: {{ 'SÍ (' + (preparaad_realm_post.stdout_lines | default(preparaad_realm.stdout_lines) | join(', ')) + ')' if preparaad_unido | bool else 'NO (prerequisitos instalados; ver roles/preparaAD/CLAUDE.md para unir)' }}"
+      - "Dominio configurado: {{ preparaad_dominio if preparaad_dominio != '' else '(sin definir — fijar preparaad_dominio)' }}"
+      - "Dominio visible por DNS: {{ 'SÍ' if (preparaad_discover.rc | default(-1)) == 0 else ('no comprobado' if preparaad_discover is skipped or preparaad_dominio == '' else ('NO — ni con split-DNS hacia ' + preparaad_dominio_dnss + ' (¿se llega a esas IPs?)' if preparaad_dns_dropin is defined and preparaad_dns_dropin is not skipped else 'NO — el DNS del equipo no resuelve el dominio (la unión fallará)')) }}"
+      - "Split-DNS hacia los DC: {{ 'no comprobado (sin dominio)' if preparaad_dominio == '' else ('ACTIVO → ' + preparaad_dominio_dnss if preparaad_dns_dropin is defined and preparaad_dns_dropin is not skipped else 'no aplicado en este pase (el dominio ya resuelve — puede venir de un drop-in anterior)') }}"
+      - "nsswitch hosts (.local/mDNS): {{ 'AJUSTADO en este pase (dns antepuesto a mdns4_minimal)' if (preparaad_nsswitch is defined and preparaad_nsswitch is changed) else ('AVISO: mdns4_minimal sigue ANTES de dns (línea no estándar — ajustar a mano: ping a *.local fallará)' if (preparaad_nsswitch_linea.stdout | default('')) is search('mdns4_minimal.* dns') else 'OK') }}"
+      - "Reloj sincronizado por NTP: {{ 'SÍ' if (preparaad_ntpsync.stdout | default('')) == 'yes' else ('NO — Kerberos fallará por desfase >5 min con el DC; revisa NTP/conectividad' + ((' (NTP=' + preparaad_ntp + ')') if preparaad_ntp != '' else ' (preparaad_ntp VACÍO — fíjalo en entornoAD.yml)')) }}"
+  tags: [preparaad, ad]

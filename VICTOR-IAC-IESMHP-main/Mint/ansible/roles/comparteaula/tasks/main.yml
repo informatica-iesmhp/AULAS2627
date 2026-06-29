@@ -1,0 +1,125 @@
+---
+# Rol unificado comparteaula: detecta el aula por IP y configura NFS según corresponda
+
+# Extraer información del equipo
+- name: Establecer variables del equipo
+  set_fact:
+    aula_equipo: "{{ ansible_hostname.split('-')[0] }}"
+    numero_equipo: "{{ ansible_hostname.split('-')[-1] }}"
+    # Extraer el tercer octeto de la IP para identificar el aula (10.0.XX.y)
+    aula_id: "{{ ansible_default_ipv4.address.split('.')[2] }}"
+
+# Verificar que el aula está configurada
+- name: Verificar configuración de aula
+  fail:
+    msg: "Aula {{ aula_id }} no está configurada en defaults/main.yml"
+  when: aula_id not in aulas
+
+# Cargar configuración del aula detectada
+- name: Cargar configuración del aula
+  set_fact:
+    config_aula: "{{ aulas[aula_id] }}"
+
+- name: Mostrar información del equipo
+  debug:
+    msg: "Equipo {{ numero_equipo }} del aula {{ aula_equipo }} (subred {{ aula_id }})"
+
+###############################
+# BLOQUE SERVIDOR NFS (equipo 00 en aulas con servidor propio)
+###############################
+- name: Configurar servidor NFS si es el equipo 00
+  when: 
+    - numero_equipo == "00"
+    - config_aula.es_servidor_nfs | default(false)
+  block:
+    - name: Instalar servidor NFS
+      apt:
+        name: 
+          - nfs-common
+          - nfs-kernel-server
+        state: present
+        update_cache: false
+
+    - name: Crear carpeta compartida
+      file:
+        path: "{{ config_aula.carpeta_nfs }}"
+        state: directory
+        owner: nobody
+        group: nogroup
+        mode: '0777'
+        recurse: yes
+
+    - name: Crear enlace simbólico hacia la carpeta compartida
+      file:
+        src: "{{ config_aula.carpeta_nfs }}"
+        dest: "{{ config_aula.nfs_mount_point }}"
+        state: link
+      when: config_aula.carpeta_nfs != config_aula.nfs_mount_point
+
+    - name: Configurar export NFS
+      lineinfile:
+        path: /etc/exports
+        line: "{{ config_aula.carpeta_nfs }} {{ config_aula.nfs_export_subnet }}(rw,sync,no_subtree_check)"
+        create: yes
+        state: present
+
+    - name: Aplicar exportfs
+      command: exportfs -a
+
+    - name: Reiniciar NFS
+      service:
+        name: nfs-kernel-server
+        state: restarted
+        enabled: true
+
+    - name: Permitir NFS en UFW desde la subred
+      ufw:
+        rule: allow
+        from_ip: "{{ config_aula.nfs_export_subnet }}"
+        port: nfs
+
+    - name: Habilitar UFW (si aún no está habilitado)
+      command: ufw enable
+      args:
+        stdin: "s"
+      register: ufw_enable
+      failed_when: false
+      changed_when: "'Firewall is active' in ufw_enable.stdout"
+
+###############################
+# BLOQUE CLIENTE NFS 
+# - Todos los equipos excepto el 00 en aulas con servidor propio
+# - Todos los equipos en aulas sin servidor propio (NAS externo)
+###############################
+- name: Configurar cliente NFS
+  when: >
+    (numero_equipo != "00") or 
+    (not config_aula.es_servidor_nfs | default(false))
+  block:
+    - name: Instalar cliente NFS
+      apt:
+        name: nfs-common
+        state: present
+        update_cache: false
+
+    - name: Verificar si existe el punto de montaje
+      stat:
+        path: "{{ config_aula.nfs_mount_point }}"
+      register: mount_point_stat
+
+    - name: Crear punto de montaje
+      file:
+        path: "{{ config_aula.nfs_mount_point }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: not mount_point_stat.stat.exists
+
+    - name: Añadir entrada a /etc/fstab y montar
+      mount:
+        path: "{{ config_aula.nfs_mount_point }}"
+        src: "{{ config_aula.nfs_server_ip }}:{{ config_aula.nfs_server_path }}"
+        fstype: nfs
+        opts: "{{ config_aula.nfs_mount_options }}"
+        state: mounted

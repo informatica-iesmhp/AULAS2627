@@ -1,0 +1,37 @@
+# instala python, pip, pipx, ansible
+
+- name: Instalar Python
+  apt:
+    name: python3
+    state: present
+    update_cache: false
+
+- name: Instalar pip
+  apt:
+    name: python3-pip
+    state: present
+    update_cache: false
+
+- name: Instalar pipx
+  apt:
+    name: pipx
+    state: present
+    update_cache: false
+
+- name: Instalar Ansible (mediante apt)
+  apt:
+    name: ansible
+    state: present
+    update_cache: false
+
+- name: Instalar git (necesario para algunos roles)
+  apt:
+    name: git
+    state: present
+    update_cache: false
+
+- name: Instalar curl (necesario para algunos roles)
+  apt:
+    name: curl
+    state: present
+    update_cache: false

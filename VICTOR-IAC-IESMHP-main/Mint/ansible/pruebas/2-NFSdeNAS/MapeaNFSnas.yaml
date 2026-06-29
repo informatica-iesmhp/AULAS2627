@@ -1,0 +1,67 @@
+---
+
+# Para ejecutar este playbook (en solo el equipo IA1 del inventario):
+ #   ansible-playbook -i ../../equiposSMRD.ini MapeaNFSnas.yaml -l SMRD-00
+
+
+# Simple playbook to return machine information (hostname, IP address, and MAC address)
+
+- name: Crear compartida NFS en clientes
+  hosts: all
+  #become: true
+  gather_facts: yes
+  tasks:
+    - name: Instalar nfs-common
+      apt:
+        name: nfs-common
+        state: present
+        update_cache: true
+
+    # - name: Detengo servicio NFS (clientes)
+    #   service:
+    #     name: nfs-common
+    #     state: stopped
+    #     enabled: no
+
+    - name: Desmontar carpeta NFS (clientes)
+      command: "umount -l /mnt/nasFast"
+      ignore_errors: yes
+
+    - name: Asegurarse de que la carpeta /mnt/nasFast no existe antes de copiar
+      ansible.builtin.file:
+        path: /mnt/nasFast
+        state: absent
+
+    - name: Crear punto de montaje en clientes (para que root y grupo root tengan acceso total y otros solo lectura)
+      file:
+           path: /mnt/nasFast
+           state: directory
+           owner: root
+           group: root
+           mode: '0775'  
+    
+    - name: Borra línea a /etc/fstab (clientes)
+      lineinfile:
+           path: /etc/fstab
+           line: "10.0.32.253:/mnt/DiscosRapidos/PruebaRapidosX3 /mnt/nasFast nfs defaults 0 0"
+           state: absent
+    
+    - name: Añadir línea a /etc/fstab (clientes)
+      lineinfile:
+           path: /etc/fstab
+           line: "10.0.32.253:/mnt/DiscosRapidos/PruebaRapidosX3 /mnt/nasFast nfs ro,defaults,_netdev 0 0"
+           state: present
+
+    - name: Montar carpeta NFS (clientes)
+      command: mount -a
+
+    - name: Realizamos un daemon-reload (clientes)
+      command: systemctl daemon-reload
+
+
+    - name: Listo las carpetas  de /mnt/nasFast (y las muestro)
+      command: ls -l /mnt/nasFast 
+      register: listado_mnt
+    - debug:
+        var: listado_mnt.stdout_lines
+

@@ -1,0 +1,12 @@
+# Variables del rol DirtyFrag
+# CVE-2026-43284 (ESP/IPsec) y CVE-2026-43500 (RxRPC)
+# https://ubuntu.com/blog/dirty-frag-linux-vulnerability-fixes-available
+
+# Módulos del kernel vulnerables que hay que bloquear y descargar
+dirtyfrag_modulos:
+  - esp4
+  - esp6
+  - rxrpc
+
+# Fichero de mitigación (blacklist via modprobe)
+dirtyfrag_conf: /etc/modprobe.d/dirty-frag.conf

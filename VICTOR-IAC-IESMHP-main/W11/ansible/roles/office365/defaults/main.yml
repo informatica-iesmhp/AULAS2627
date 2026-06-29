@@ -1,0 +1,5 @@
+---
+# Paquete de Chocolatey para Microsoft 365 Apps.
+#   office365business  -> Microsoft 365 Apps for Business
+#   office365proplus   -> Microsoft 365 Apps for Enterprise
+office_choco_name: office365business

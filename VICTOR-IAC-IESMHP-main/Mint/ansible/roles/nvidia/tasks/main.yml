@@ -1,0 +1,78 @@
+- name: Comprobar si hay una GPU NVIDIA
+  command: lspci
+  changed_when: false  #no quiero que marque como cambiado haya o no haya GPU
+  register: lspci_output
+
+- name: Verificar si existe una GPU NVIDIA
+  set_fact:
+    has_nvidia: "{{ lspci_output.stdout is search('NVIDIA') }}"
+
+- name: Notificar si no hay GPU NVIDIA
+  debug:
+    msg: "No se detectó una tarjeta NVIDIA en este sistema. Saltando la instalación del driver."
+  when: not has_nvidia
+
+# ORIGINALMENTE se paraba el playbook si no había GPU NVIDIA, pero se ha comentado para permitir continuar con otras tareas.  
+          # - name: Salir si no hay GPU NVIDIA
+          #   meta: end_play
+          #   when: not has_nvidia
+
+- name: Saltar las tareas de NVIDIA si no hay GPU
+  when: not has_nvidia
+  block:
+    - name: Mensaje informativo
+      debug:
+        msg: "No se detectó una tarjeta NVIDIA, saltando la configuración del driver."
+
+- name: Tareas de instalación de NVIDIA
+  when: has_nvidia
+  block:
+  #Originalmente comprobábamos la versión del kernel y solo lo hacíamos si era uno concreto. Lo ignoramos de momento.
+  #- name: Comprobar versión actual del kernel
+  #  command: uname -r
+  #  register: current_kernel
+  #- name: Abortar si el kernel no es el requerido
+  #  fail:
+  #    msg: "El kernel actual ({{ current_kernel.stdout }}) no es el requerido ({{ required_kernel }})."
+  #  when: current_kernel.stdout != required_kernel
+
+  #Para pruebas desinstalar primero el drive y reiniciar  ( apt remove nvidia-driver-535 -y ) 
+  - name: Instalar el driver NVIDIA específico
+    apt:
+      name: "nvidia-driver-{{ required_nvidia_driver }}"
+      state: present
+      update_cache: no
+    register: nvidia_driver_install
+
+  - name: Reiniciar si el driver NVIDIA fue instalado
+    reboot:
+      msg: "Reiniciando para aplicar los cambios del driver NVIDIA"
+      connect_timeout: 5
+      reboot_timeout: 600
+      post_reboot_delay: 30
+    when: nvidia_driver_install.changed
+
+  - name: Comprobar versión instalada del driver NVIDIA
+    shell: nvidia-smi --query-gpu=driver_version --format=csv,noheader
+    register: nvidia_version
+    changed_when: false
+
+  - name: Mostrar versión del driver NVIDIA instalada
+    debug:
+      msg: "Versión instalada del driver NVIDIA: {{ nvidia_version.stdout }}"
+
+  - name: Obtener la última versión disponible en el repositorio
+    shell: apt-cache policy nvidia-driver-{{ required_nvidia_driver }} | grep Candidat | awk '{print $2}'
+    register: available_version
+    changed_when: false
+
+  - name: Comparar con la versión instalada
+    debug:
+      msg: >
+        {% set repo_version_short = available_version.stdout | regex_search('^\\d+\\.\\d+\\.\\d+') %}
+        {% if repo_version_short != nvidia_version.stdout %}
+          Hay una versión más nueva disponible: {{ available_version.stdout }} [ actual: {{ nvidia_version.stdout }} ].
+          Por favor, actualiza el driver NVIDIA. 
+        {% else %}
+          Ya tienes la última versión disponible del driver NVIDIA.
+        {% endif %}

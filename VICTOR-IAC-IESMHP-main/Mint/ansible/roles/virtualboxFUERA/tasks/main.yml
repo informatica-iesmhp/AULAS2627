@@ -1,0 +1,99 @@
+---
+# tasks file for desinstalar_virtualbox
+
+- name: 1. Detener y deshabilitar servicios de VirtualBox (si existen)
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+    - vboxdrv
+    - vboxautostart-service
+    - vboxweb-service
+  ignore_errors: true
+  tags:
+    - virtualbox
+    - uninstall
+
+- name: 2. Desinstalar completamente todos los paquetes de VirtualBox
+  ansible.builtin.apt:
+    name: "virtualbox*" # El comodín '*' asegura que se eliminen todas las versiones y componentes
+    state: absent
+    purge: yes         # 'purge' elimina también los archivos de configuración
+    autoremove: yes    # 'autoremove' limpia las dependencias que ya no se necesitan
+  tags:
+    - virtualbox
+    - uninstall
+
+- name: 3. Buscar archivos de repositorio de VirtualBox/Oracle en sources.list.d
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d/
+    patterns: "*.list"
+    contains: '(?i)virtualbox|oracle' # Búsqueda case-insensitive de 'virtualbox' u 'oracle'
+  register: found_repo_files
+  tags:
+    - virtualbox
+    - repository
+
+- name: 4. Eliminar los archivos de repositorio de VirtualBox/Oracle encontrados
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ found_repo_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: found_repo_files.files | length > 0
+  notify: Update APT Cache # Notificamos al handler para que actualice la caché al final
+  tags:
+    - virtualbox
+    - repository
+
+- name: 5. Buscar claves GPG de Oracle/VirtualBox
+  ansible.builtin.find:
+    paths: /etc/apt/trusted.gpg.d/
+    patterns:
+      - "*oracle*.gpg"
+      - "*virtualbox*.gpg"
+  register: found_gpg_keys
+  tags:
+    - virtualbox
+    - gpg
+
+- name: 6. Eliminar las claves GPG de Oracle/VirtualBox encontradas
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ found_gpg_keys.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: found_gpg_keys.files | length > 0
+  notify: Update APT Cache # Notificamos también aquí por si acaso
+  tags:
+    - virtualbox
+    - gpg
+
+- name: 7. Forzar la actualización de la caché de APT y autoremove final
+  ansible.builtin.apt:
+    update_cache: yes
+    autoremove: yes
+  changed_when: false # Esta tarea es de mantenimiento, no la contamos como un cambio real
+  tags:
+    - virtualbox
+    - cleanup
+
+- name: 8. Verificación final (opcional pero recomendado)
+  ansible.builtin.command: dpkg-query -W -f='${Status}' virtualbox
+  register: vbox_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - virtualbox
+    - verification
+
+- name: Mostrar estado de la desinstalación
+  ansible.builtin.debug:
+    msg: "VirtualBox ha sido desinstalado correctamente. El sistema no encuentra el paquete."
+  when: vbox_check.rc != 0
+  tags:
+    - virtualbox
+    - verification

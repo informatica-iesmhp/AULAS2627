@@ -1,0 +1,22 @@
+sudo apt install xorriso mtools gdisk -y
+
+# 2. Dar permisos y ejecutar
+chmod +x 00-create_custom_iso.sh
+./00-create_custom_iso.sh ~/Descargas/ubuntu-26.04-desktop-amd64.iso 0b-Github.sh ~/Descargas/mi-ubuntu.iso
+
+
+#Ahora mismo (en el equipo de 140, como mi usuario, por ssh)
+cd ~/xIAC-IESMHP/Ubuntu/ISO/26.04
+git reset --hard origin/main && git pull && chmod +x ./0a-CreaISO.sh && sudo ./0a-CreaISO.sh ~/Descargas/ubuntu-26.04-desktop-amd64.iso 0b-Github.sh ~/Descargas/mi-ubuntu.iso
+
+#Despues , en vmware, arranco la máquina que está conectada
+# a esa iso (ubuntu auto)
+
+#Me puedo descargar los logs con (borra certificado registrado y se conecta para descargar): 
+#como ubuntu:
+(Get-Content -Path "C:\Users\vmuela\.ssh\known_hosts") -notmatch "10\.0\.72\.51" | Set-Content -Path "C:\Users\vmuela\.ssh\known_hosts"; scp -r -O -o StrictHostKeyChecking=accept-new ubuntu@10.0.72.51:/mnt/var/log/IAC-IESMHP/Ubuntu "E:\Usuarios\vmuela\OneDrive - Educantabria\_20FP25-26\Dep\IAC-IESMHP\Ubuntu\ISO\26.04\logs"
+
+#como usuario:
+(Get-Content -Path "C:\Users\vmuela\.ssh\known_hosts") -notmatch "10\.0\.72\.51" | Set-Content -Path "C:\Users\vmuela\.ssh\known_hosts"; scp -r -O -o StrictHostKeyChecking=accept-new usuario@10.0.72.51:/var/log/IAC-IESMHP/Ubuntu "E:\Usuarios\vmuela\OneDrive - Educantabria\_20FP25-26\Dep\IAC-IESMHP\Ubuntu\ISO\26.04\logs"
+
+

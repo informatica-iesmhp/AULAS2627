@@ -1,0 +1,125 @@
+---
+# Rol clienteNAS: monta por NFS (solo lectura) TODOS los recursos que el
+# NAS del departamento ({{ nas_server_ip }}) publica, autodescubiertos con
+# `showmount -e`. Cada export se monta en {{ nas_base_mount }}/<nombre>.
+# Parametrizado en defaults/main.yml.
+
+#Antes de instalar el cliente NFS, comprobamos "dpkg --configure -a" para evitar que se quede a medias por un paquete roto y no instale el cliente NFS.
+- name: Asegurar que no hay paquetes a medio configurar 
+  command: dpkg --configure -a
+
+- name: Instalar cliente NFS (provee mount.nfs y showmount)
+  apt:
+    name:
+      - nfs-common
+    state: present
+    update_cache: false
+
+- name: Crear carpeta base de montaje
+  file:
+    path: "{{ nas_base_mount }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Autodescubrir los exports del NAS ({{ nas_server_ip }})
+  command: "showmount -e {{ nas_server_ip }}"
+  register: showmount_raw
+  changed_when: false
+  retries: "{{ nas_showmount_retries }}"
+  delay: "{{ nas_showmount_delay }}"
+  until: showmount_raw.rc == 0
+
+# Salida típica:
+#   Export list for 10.0.1.100:
+#   /mnt/DiscosRapidos/PruebaRapidosX3 *
+# La 1ª columna de cada línea es la ruta exportada; el resto es la lista de
+# clientes. Nos quedamos solo con las líneas que empiezan por '/', lo que
+# descarta la cabecera "Export list for ..." sin depender de --no-headers.
+- name: Calcular la lista de exports remotos
+  set_fact:
+    nas_exports: >-
+      {{ showmount_raw.stdout_lines
+         | map('regex_replace', '^\s*(\S+).*$', '\1')
+         | select('match', '^/')
+         | list }}
+
+- name: Avisar si el NAS no publica ningún export
+  debug:
+    msg: "El NAS {{ nas_server_ip }} no exporta ningún recurso — nada que montar."
+  when: nas_exports | length == 0
+
+# Mapa export remoto -> punto de montaje local, según nas_subdir_strategy.
+- name: Construir el mapa export remoto -> montaje local
+  set_fact:
+    nas_mounts: >-
+      {{ nas_mounts | default([]) + [ {
+           'src': nas_server_ip ~ ':' ~ item,
+           'path': nas_base_mount ~ '/' ~ (
+                     (item | basename) if nas_subdir_strategy == 'basename'
+                     else (item | regex_replace('^/', ''))
+                   )
+         } ] }}
+  loop: "{{ nas_exports }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Mostrar lo que se va a montar
+  debug:
+    var: nas_mounts
+  when: nas_mounts | default([]) | length > 0
+
+# En una re-ejecución, el export ya está montado en su punto de destino en
+# solo lectura (ro). El módulo `file` con state=directory SIEMPRE intenta
+# aplicar owner/group/mode, lo que sobre el NFS montado ro falla con
+# "[Errno 30] Read-only file system". Por eso primero detectamos qué puntos
+# ya están montados y solo creamos (con permisos) los que aún no lo están —
+# un punto ya montado existe por definición, así que no hay nada que crear.
+- name: Detectar qué puntos de montaje ya están montados
+  command: "mountpoint -q {{ item.path }}"
+  register: nas_mp_check
+  changed_when: false
+  failed_when: false
+  loop: "{{ nas_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Crear los puntos de montaje locales que aún no están montados
+  file:
+    path: "{{ item.item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ nas_mp_check.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  when: item.rc != 0
+
+# El módulo `ansible.posix.mount` (state=mounted) emite varios
+# [DEPRECATION WARNING] en su propio código interno (imports antiguos de
+# `ansible.module_utils._text` y `warnings` en exit_json). Para NO tener que
+# silenciar los avisos de TODA la fase Ansible (deprecation_warnings=False en
+# ansible.cfg), gestionamos fstab + montaje a mano: así el cambio queda
+# acotado a este rol y el resto de avisos de deprecación siguen visibles.
+- name: Asegurar la entrada de cada export del NAS en /etc/fstab
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^\S+\s+{{ item.path | regex_escape }}\s'
+    line: "{{ item.src }} {{ item.path }} {{ nas_fstype }} {{ nas_mount_options }} 0 0"
+    state: present
+  loop: "{{ nas_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.src }} -> {{ item.path }}"
+
+# Solo monta los que aún no están montados (reutiliza nas_mp_check). `mount
+# <punto>` lee la línea recién escrita en fstab. Los ya montados se omiten.
+- name: Montar los exports que aún no están montados
+  command: "mount {{ item.item.path }}"
+  register: nas_mount_now
+  changed_when: nas_mount_now.rc == 0
+  loop: "{{ nas_mp_check.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  when: item.rc != 0

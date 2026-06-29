@@ -1,0 +1,87 @@
+---
+- name: Comprobamos que existen las herramientas necesarias
+  apt:
+    name:
+      - wget
+      - gnupg
+    state: present
+    update_cache: false
+
+#TODO: marca changed todas las veces que se ejecuta, aunque no se cambie nada . CORREGIR
+- name: Comprobamos que el fichero de claves GPG de VirtualBox existe
+  stat:
+    path: /usr/share/keyrings/oracle-virtualbox-2016.gpg
+  register: gpg_key_file
+
+- name: Si no existe, descargamos la clave GPG de VirtualBox
+  shell: |
+    wget -O- https://www.virtualbox.org/download/oracle_vbox_2016.asc | \
+    gpg --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg --dearmor
+  args:
+    executable: /bin/bash
+  when: not gpg_key_file.stat.exists
+
+- name: Comprobamos que el repositorio de VirtualBox no existe
+  apt_repository:
+    repo: "{{ virtualbox_apt_repo }}"
+    state: absent
+  register: repo_check
+  changed_when: false  #no quiero que marque como cambiado haya o no haya repositorio
+  ignore_errors: true
+
+#TODO: marca changed todas las veces que se ejecuta, aunque no se cambie nada . CORREGIR
+- name: Añadimos el repositorio de VirtualBox
+  changed_when: false  #no quiero que marque como cambiado haya o no haya repositorio
+  apt_repository:
+    repo: "{{ virtualbox_apt_repo }}"
+    filename: "virtualbox"
+    state: present
+
+- name: Actualizamos la caché de APT
+  apt:
+    update_cache: yes
+  when: repo_check is changed or repo_check is failed
+
+- name: Comprobamos si existe una versión instalada de VirtualBox
+  shell: "dpkg-query -W -f='${Version}' virtualbox-{{ virtualbox_series }}*"
+  register: installed_version
+  ignore_errors: true
+  changed_when: false
+
+- name: Comprobamos la versión candidata de VirtualBox desde APT  (nos quedamos solo con X.XX.XX)
+  shell: "apt-cache policy virtualbox-{{ virtualbox_series }} | grep Candidat | awk '{print $2}' | cut -d'-' -f1"
+  register: candidate_version
+  changed_when: false
+
+- name: Comparamos versiones y advertimos si existe una versión más nueva
+  debug:
+    msg: " VirtualBox version {{ candidate_version.stdout }} es mas reciente que la solicitada {{ virtualbox_version }}."
+  when:
+    - candidate_version.stdout is defined
+    - candidate_version.stdout | length > 0
+    - candidate_version.stdout is version(virtualbox_version, '>')
+    - installed_version.rc != 0 or installed_version.stdout is version(virtualbox_version, '!=')
+
+#ESTO NO FUNCIONA BIE. SIEMPRE DESISNTALA LA VERSIÓN INSTALADA
+# - name: Remove previous version of VirtualBox (if installed)
+#   apt:
+#     name: "virtualbox-{{ virtualbox_series }}"
+#     state: absent
+#   when: installed_version.rc == 0
+
+
+- name: Try installing exact VirtualBox version {{ virtualbox_version }}
+  apt:
+    name: "virtualbox-{{ virtualbox_series }}={{ virtualbox_version }}*"
+    state: present
+    update_cache: yes
+  register: install_result
+# ignore_errors: true
+
+#LO SIGUIENTE FUNCIONA: pero yo quiero que se instale la versión exacta
+# - name: "Fallback: install latest available version"
+#   apt:
+#     name: "virtualbox-{{ virtualbox_series }}"
+#     state: present
+#     update_cache: yes
+#   when: install_result is failed

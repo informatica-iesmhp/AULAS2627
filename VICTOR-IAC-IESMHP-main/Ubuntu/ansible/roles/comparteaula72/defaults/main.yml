@@ -1,0 +1,10 @@
+---
+#Variables para el servidor NFS
+disco_hd: "/home"
+carpeta_nfs: "{{ disco_hd }}/ComparteProfesor"
+
+#Variables del cliente NFS
+nfs_server_ip: "10.0.72.120"
+nfs_server_path: "/home/ComparteProfesor"
+nfs_mount_point: "/ComparteProfesor"
+nfs_mount_options: "rw,hard,intr,rsize=262144,wsize=262144,timeo=600"

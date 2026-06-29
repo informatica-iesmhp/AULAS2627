@@ -1,0 +1,12 @@
+Ya tengo una iso de thinstation, en un usb: 
+
+Funciona en: 
+- Aula ESO (profesor->hay que habilitar arranque por usb)
+- Aula Bachillerato (profesor y alummos)
+- Departamento: algunos equipos (en algún otro hay que entrar en BIOS, y de hacerlo, no arrancaría windos (ej: equipo ventana "victor"))
+
+POR HACER:
+- Agregar python y un servicio de toma de capturas automáticas
+- En Windows 11, el orden de los monitores a veces se lia. (mirar https://share.gemini.google/ybBY0RPLKmlk)
+        tsuser tsuser
+        Ejecuta xrandr sin parámetros para listar las interfaces de vídeo conectadas. Identifica los nombres de los puertos que están en estado "connected" (por ejemplo, HDMI-1, DP-1, VGA-1).

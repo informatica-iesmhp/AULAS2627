@@ -1,0 +1,24 @@
+# Variables del rol horaHTTP
+# Sincroniza la hora del sistema en CADA arranque (y periódicamente): primero
+# por NTP y, si el UDP 123 está filtrado (típico en las aulas), por HTTP
+# (cabecera «Date:» de una petición HTTPS, que viaja por TCP 443).
+
+# Zona horaria del centro
+horahttp_zona: Europe/Madrid
+
+# Servidores HTTPS del fallback (se prueban EN ORDEN hasta que uno responda).
+# Se lee la cabecera de respuesta «Date:» (viene siempre en GMT).
+horahttp_urls:
+  - https://www.google.com
+  - https://github.com
+  - https://www.cloudflare.com
+
+# Espera máxima a que NTP confirme sincronización: iteraciones × 2 s (15 → ~30 s)
+horahttp_ntp_intentos: 15
+
+# Periodo del timer de re-sincronización (formato systemd OnUnitActiveSec)
+horahttp_timer_intervalo: 1h
+
+# Rutas / nombres de los artefactos instalados (no suele hacer falta cambiarlos)
+horahttp_script: /usr/local/sbin/iac-sincroniza-hora.sh
+horahttp_unidad: iac-sincroniza-hora

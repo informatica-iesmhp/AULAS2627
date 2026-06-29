@@ -1,0 +1,287 @@
+- name: Comprobar si hay una GPU NVIDIA
+  command: lspci
+  changed_when: false  # no quiero que marque como cambiado haya o no haya GPU
+  register: lspci_output
+
+- name: Verificar si existe una GPU NVIDIA
+  set_fact:
+    has_nvidia: "{{ lspci_output.stdout is search('NVIDIA') }}"
+
+- name: Notificar si no hay GPU NVIDIA
+  debug:
+    msg: "No se detectó una tarjeta NVIDIA en este sistema. Saltando la instalación del driver."
+  when: not has_nvidia
+
+# ORIGINALMENTE se paraba el playbook si no había GPU NVIDIA, pero se ha
+# comentado para permitir continuar con otras tareas.
+#   - name: Salir si no hay GPU NVIDIA
+#     meta: end_play
+#     when: not has_nvidia
+
+- name: Tareas de instalación de NVIDIA (Ubuntu Desktop 26.04 — soporte nativo)
+  when: has_nvidia
+  # En maquinas FISICAS con GPU NVIDIA, el postinst del driver (DKMS /
+  # shim-signed / enrolado de clave MOK de Secure Boot) abre un dialogo
+  # debconf INTERACTIVO. `command: ubuntu-drivers install` es un comando crudo
+  # (el modulo `apt` de Ansible ya forzaria noninteractive, un `command` no) y
+  # Ansible corre SIN TTY -> ese dialogo espera una entrada que nunca llega y
+  # deja dpkg a medio configurar. Sintoma: el primer arranque se cuelga en el
+  # rol nvidia y `sudo dpkg --configure -a` lo desbloquea. En VM el rol es casi
+  # un no-op (no hay GPU NVIDIA), por eso solo falla en hardware real.
+  # DEBIAN_FRONTEND=noninteractive evita el prompt (shim-signed bajo
+  # noninteractive NO pide MOK: omite el enrolado); NEEDRESTART_MODE=a evita el
+  # whiptail de needrestart tras compilar el modulo.
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+    NEEDRESTART_MODE: a
+  block:
+    # En el PRIMER ARRANQUE, justo despues del `apt-get full-upgrade` de
+    # 3-SetupPrimerInicio.sh, los timers apt-daily / apt-daily-upgrade, el
+    # servicio unattended-upgrades y packagekit se activan y agarran
+    # /var/lib/dpkg/lock-frontend. `ubuntu-drivers install` invoca apt por
+    # debajo: si choca con ese lock mientras otro proceso instala/compila se
+    # queda esperando y deja dpkg a medio configurar (sintoma del cuelgue en
+    # maquina FISICA). DEBIAN_FRONTEND=noninteractive NO arregla esto: hay que
+    # callar esos procesos ANTES de tocar apt. Best-effort: el servicio puede
+    # no existir (p. ej. packagekit) -> failed_when:false.
+    - name: Silenciar apt en segundo plano (timers/servicios que retienen el lock)
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+        - apt-daily.service
+        - apt-daily-upgrade.service
+        - unattended-upgrades.service
+        - packagekit.service
+      changed_when: false
+      failed_when: false
+
+    # Si un paso previo (p. ej. apt-get full-upgrade de 3-SetupPrimerInicio.sh)
+    # dejo paquetes desempaquetados pero sin configurar, terminarlos ahora para
+    # que `ubuntu-drivers install` no parta de un dpkg roto. Best-effort: no
+    # aborta el playbook si dpkg no puede terminar (lo reportara el install).
+    - name: Asegurar que dpkg no quedó a medio configurar de pasos previos
+      command: dpkg --configure --pending
+      register: dpkg_pending
+      changed_when: false
+      failed_when: false
+
+    # Ubuntu 26.04 trae soporte nativo de drivers NVIDIA: el metapaquete
+    # ubuntu-drivers-common selecciona el driver recomendado para esta GPU.
+    - name: Instalar ubuntu-drivers-common (gestor nativo de drivers de Ubuntu)
+      apt:
+        name: ubuntu-drivers-common
+        state: present
+        update_cache: no
+
+    - name: Comprobar si el driver NVIDIA ya está operativo
+      command: nvidia-smi --query-gpu=driver_version --format=csv,noheader
+      register: nvidia_smi_pre
+      changed_when: false
+      failed_when: false
+
+    # Bloquear hasta que el lock de dpkg/apt quede libre (o 600 s). apt usa
+    # flock sobre lock-frontend, asi que este flock espera exactamente a lo
+    # mismo, sin depender de psmisc/fuser. Aun habiendo parado los timers,
+    # puede haber un dpkg en curso terminando; mejor esperarlo que colisionar.
+    - name: Esperar a que el lock de dpkg/apt quede libre antes de instalar
+      command: flock -w 600 /var/lib/dpkg/lock-frontend true
+      changed_when: false
+      failed_when: false
+      when:
+        - nvidia_smi_pre.rc != 0
+        - required_nvidia_driver | length == 0
+
+    - name: Instalar el driver NVIDIA recomendado por Ubuntu (no interactivo, timeout duro)
+      # `command:` crudo no tiene techo: si pese al frontend no interactivo
+      # algo se atasca, Ansible esperaria para siempre (issue conocido del
+      # rol). `timeout -k 60 1800` pone tope duro (SIGTERM a 30 min, SIGKILL
+      # 60 s despues); `</dev/null` da EOF a cualquier lectura de stdin en vez
+      # de bloquear; el environment refuerza el modo no interactivo de
+      # debconf/needrestart/apt-listchanges.
+      shell: timeout -k 60 1800 ubuntu-drivers install </dev/null
+      register: ubuntu_drivers_install
+      changed_when: ubuntu_drivers_install.rc == 0
+      # rc=124 -> timeout agotado. NO abortamos el playbook (rol best-effort
+      # dentro del flujo mayor): el estado real lo reporta el debug siguiente
+      # y el check nvidia-smi posterior.
+      failed_when: false
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        DEBCONF_NONINTERACTIVE_SEEN: "true"
+        NEEDRESTART_MODE: a
+        APT_LISTCHANGES_FRONTEND: none
+      when:
+        - nvidia_smi_pre.rc != 0
+        - required_nvidia_driver | length == 0
+
+    - name: Avisar si la instalación del driver NVIDIA no terminó limpiamente
+      debug:
+        msg: >
+          ubuntu-drivers install devolvió rc={{ ubuntu_drivers_install.rc }}.
+          {% if ubuntu_drivers_install.rc == 124 %}TIMEOUT (30 min): revisar lock de apt o Secure Boot.{% endif %}
+      when:
+        - ubuntu_drivers_install is defined
+        - ubuntu_drivers_install.rc is defined
+        - ubuntu_drivers_install.rc != 0
+
+    # Si la instalacion (o un timeout que matara apt/dpkg a media faena) dejo
+    # dpkg interrumpido, terminarlo aqui automaticamente -> el operario ya no
+    # tiene que hacer `sudo dpkg --configure -a` a mano para desbloquear.
+    - name: Terminar configuración de dpkg interrumpida por la instalación
+      command: dpkg --configure -a
+      changed_when: false
+      failed_when: false
+      when: nvidia_smi_pre.rc != 0
+
+    - name: Instalar una serie concreta del driver NVIDIA (solo si se ha forzado)
+      apt:
+        name: "nvidia-driver-{{ required_nvidia_driver }}"
+        state: present
+        update_cache: no
+      register: nvidia_driver_pin
+      when:
+        - nvidia_smi_pre.rc != 0
+        - required_nvidia_driver | length > 0
+
+    #Lo comento para que no de error lanzado por localhost
+    # - name: Reiniciar si se acaba de instalar el driver NVIDIA
+    #   reboot:
+    #     msg: "Reiniciando para aplicar los cambios del driver NVIDIA"
+    #     connect_timeout: 5
+    #     reboot_timeout: 600
+    #     post_reboot_delay: 30
+    #   when: >
+    #     (ubuntu_drivers_install is defined and ubuntu_drivers_install is changed)
+    #     or (nvidia_driver_pin is defined and nvidia_driver_pin is changed)
+
+    # Sustituto del reboot comentado: con --connection=local (lanzado por
+    # 3-SetupPrimerInicio.sh en el primer arranque) el modulo `reboot` falla
+    # porque intenta reconectarse via SSH a si mismo. Como 3-SetupPrimerInicio.sh
+    # YA reinicia el equipo al final del primer arranque tras el ansible, el
+    # reboot dentro del rol es redundante. En vez de reiniciar aqui, comprobamos
+    # que las tareas siguientes (nvidia-smi, ubuntu-drivers devices) no van a
+    # fallar y dejamos traza explicita en el log si el modulo aun no esta
+    # cargado (caso tipico: instalacion fresca sin reboot, el modulo se
+    # activara tras el reinicio final de 3-SetupPrimerInicio.sh).
+    - name: Comprobar si el módulo NVIDIA está cargado tras la instalación
+      shell: lsmod | awk '$1 ~ /^nvidia/ {print $1}'
+      register: nvidia_modules_loaded
+      changed_when: false
+      failed_when: false
+
+    - name: Avisar si el módulo NVIDIA aún no está cargado (se requiere reinicio)
+      debug:
+        msg: >
+          Driver NVIDIA instalado pero módulo aún no cargado en el kernel
+          actual. Los pasos siguientes (nvidia-smi) pueden no reflejar la
+          versión final; el reinicio que hace 3-SetupPrimerInicio.sh al
+          terminar el primer arranque activará el driver.
+      when:
+        - nvidia_modules_loaded is defined
+        - nvidia_modules_loaded.stdout is defined
+        - nvidia_modules_loaded.stdout | trim | length == 0
+
+    - name: Comprobar versión instalada del driver NVIDIA
+      command: nvidia-smi --query-gpu=driver_version --format=csv,noheader
+      register: nvidia_version
+      changed_when: false
+      failed_when: false
+
+    - name: Mostrar versión del driver NVIDIA instalada
+      debug:
+        msg: >
+          {% if nvidia_version.rc == 0 %}
+            Versión instalada del driver NVIDIA: {{ nvidia_version.stdout }}
+          {% else %}
+            nvidia-smi no responde todavía; el driver puede requerir otro reinicio.
+          {% endif %}
+
+    - name: Obtener el driver recomendado por Ubuntu para esta GPU
+      shell: ubuntu-drivers devices 2>/dev/null | awk '/recommended/ {print $3}'
+      register: recommended_driver
+      changed_when: false
+      failed_when: false
+
+    - name: Comparar el driver recomendado con el instalado
+      debug:
+        msg: >
+          {% if recommended_driver.stdout | trim | length > 0 %}
+            Driver recomendado por Ubuntu para esta GPU: {{ recommended_driver.stdout | trim }}
+            (instalado: {{ nvidia_version.stdout | default('desconocido') }}).
+            Si difiere, ejecuta «ubuntu-drivers install» o fija required_nvidia_driver.
+          {% else %}
+            Ubuntu no reporta un driver recomendado adicional; instalado: {{ nvidia_version.stdout | default('desconocido') }}.
+          {% endif %}
+
+    # ------------------------------------------------------------------
+    # NVIDIA Container Toolkit — solo si hay GPU NVIDIA (bloque ya está
+    # bajo `when: has_nvidia`). Permite a Docker/Podman acceder a la GPU
+    # vía CDI (`/etc/cdi/nvidia.yaml`). Idempotente: si `nvidia-ctk` ya
+    # existe, no reinstala (solo regenera el CDI si hace falta).
+    # Fuente oficial: https://nvidia.github.io/libnvidia-container/
+    # ------------------------------------------------------------------
+    - name: Comprobar si nvidia-container-toolkit ya está instalado
+      command: dpkg-query -W -f='${Status}' nvidia-container-toolkit
+      register: nct_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Instalar el NVIDIA Container Toolkit
+      when: "'install ok installed' not in nct_installed.stdout"
+      block:
+        # `curl` lo instala el rol `basicos` (1º en roles.yaml), así que
+        # está disponible aquí.
+        #
+        # OJO: NO usar `creates:` con el keyring. Una run anterior fallida
+        # (p. ej. sin `curl`) deja el fichero CREADO PERO VACÍO -> `creates:`
+        # lo daría por bueno y apt fallaría con NO_PUBKEY. En vez de eso,
+        # comprobamos que el keyring contiene una clave válida y solo lo
+        # (re)generamos si no es así.
+        - name: Comprobar si el keyring de NVIDIA ya es válido
+          command: gpg --show-keys /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+          register: nct_keyring_check
+          changed_when: false
+          failed_when: false
+
+        # `set -o pipefail` (bash) hace que el pipe falle si `curl` falla, en
+        # vez de dejar un keyring vacío como en la run anterior. `--yes`
+        # sobreescribe el fichero inválido sin preguntar.
+        - name: Descargar la clave GPG del repo NVIDIA Container Toolkit
+          shell: |
+            set -o pipefail
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+              | gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+          args:
+            executable: /bin/bash
+          when: nct_keyring_check.rc != 0
+
+        - name: Añadir el repositorio APT del NVIDIA Container Toolkit
+          shell: >
+            curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list
+            | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g'
+            > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+          args:
+            creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+        - name: Instalar nvidia-container-toolkit (refresca caché por el repo nuevo)
+          apt:
+            name: nvidia-container-toolkit
+            state: present
+            update_cache: yes
+          register: nct_apt
+
+    # Genera la especificación CDI que consumen Docker/Podman. Se ejecuta
+    # si el toolkit acaba de instalarse o si aún no existe el fichero CDI.
+    - name: Generar la especificación CDI de NVIDIA (/etc/cdi/nvidia.yaml)
+      command: nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+      args:
+        creates: /etc/cdi/nvidia.yaml
+      register: nct_cdi
+      changed_when: nct_cdi.rc == 0
+      # En instalación fresca el módulo NVIDIA puede no estar cargado aún
+      # (el reinicio final de 3-SetupPrimerInicio.sh lo activará); no
+      # abortamos el playbook si la generación CDI falla por eso.
+      failed_when: false

@@ -1,0 +1,7 @@
+---
+# Rol notepadpp — Notepad++ via Chocolatey.
+- name: Instalar Notepad++ {{ notepadpp_version | default('(ultima)', true) }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: notepadplusplus
+    version: "{{ notepadpp_version | default(omit, true) }}"
+    state: present

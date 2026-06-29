@@ -1,0 +1,508 @@
+
+###############################################
+# -- Thinstation sample configuration file -- #
+###############################################
+#
+# This file must be named "thinstation.conf<xxx>" where <xxx> can be:
+# .buildtime   Defines the defaults build into the image (note the leading .)
+# .network     Default global config file loaded from the TFTP server.
+# .user        Config file on local storage.
+# -<name>      Specific config file on the TFTP server for the terminal
+#              "name" (e.g. thinstation.conf-paul). Requires thinstation.hosts. 
+# .group-<id>  Config file for a group of terminals (e.g. with printer setup
+#              for those terminal with local printers. Requires thinstation.hosts.
+# -<IP>        Specific config file on the TFTP server for the terminal with
+#              the IP number <IP> specified (e.g. thinstation.conf-10.0.0.9).
+# -<MAC>       Specific config file on the TFTP server for the terminal with 
+#              the MAC address specified (e.g thinstation.conf-112233445566).
+
+##
+# --- General Options
+#
+# AUDIO_LEVEL        Audio Level for sound, 0-100
+# MIC_LEVEL          Recording level for input devices, 0-100
+# LOCALE             If multiple locales are included in the image, you can use this to
+#                     select one during boot with a .conf file.	
+# TIME_ZONE          Used to set time zone on a TS client with a zone info file. If multiple
+#                      zone-info files are included, this selection can be refined with additional
+#                      .conf files.
+# SYSLOG_SERVER      Log server ip address or hostname.
+#                    If the work "local" is used, then syslog starts logging locally
+#                    If not specified syslogd is not loaded.
+# USB_STORAGE_SYNC   ON    Safer writing
+#                    OFF   Faster writes to USB storage devices
+#                    WARNING: This may lead to data corruption when the device is unplugged
+#                             before buffers have been flushed
+# USB_MOUNT_DIR      Directory to use for mounting usbdisks (default: /mnt/usbdevice/)
+# USB_MOUNT_USELABEL Label to use for individual usb disks
+#                    default is to use the device name (eg. sda1 - /mnt/usbdevice/sda1)
+#                    NO       use default ONLY
+#                    YES      will use label on usb volume if exists or fallback to default
+#                    <label>  will use label on usb volume if exists or <label> otherwise
+#                    adds suffix of n (1,2,3,etc.) if duplicate labels found
+# USB_MOUNT_OPTIONS  additional mount options for usb devices (eg. utf8,shortname=win95)
+# 		     see mount documentation for details (man mount)
+# DISK_STORAGE_SYNC  ON    Safer writing
+#                    OFF   Faster writes to USB storage devices
+#                    WARNING: This may lead to data corruption when the device is unplugged
+#                             before buffers have been flushed
+# DISK_MOUNT_OPTIONS  additional mount options for disk devices (eg. utf8,shortname=win95)
+# 		     see mount documentation for details (man mount)
+# CDROM_MOUNT_OPTIONS  additional mount options for cdrom devices (eg. utf8,shortname=win95)
+# 		     see mount documentation for details (man mount)
+# BIND_MOUNT#        A disk label to bind mount point mapping (eg. boot:/boot or home:/root)
+# DAILY_REBOOT       Will reboot server if up over a day and one of the session
+#                    types is closed
+# CUSTOM_CONFIG      Allows choosing custom boot config, On/Off 
+# RECONNECT_PROMPT   This displays the reconnection/shutdown options for when a session is ended
+#
+#                    OFF    No reconnect prompt
+#                    ON     Reconnect prompt will be displayed
+#		     FORCE  Just reconnect
+#                    AUTO   Automatic reconnect
+#                    AUTOXX Automatic reconnect attempt after XX seconds - msg is displayed
+#                    MENU   Shows a menu with a shutdown and reconnection option
+#                    MENUXX As MENU option, but the XX is a time period in minutes.
+#                           After XX minutes shutdown will occur unless the reconnect option
+#                           is choosen
+# NO_SESSION	     What to do in the event that all sessions have exited and not reconnected.
+#		     POWEROFF  Shutdown the terminal.(default)
+#		     REBOOT    Reboot the terminal.
+# DEBUGPAUSE	     Will pause at prompt after load of all modules and packages but before starting
+#		     Only works if debug package included
+#		     true	pause at prompt to allow debug
+#		     false	don't pause (default)
+# CRON_JOBx	     Will add this crontab entry (1 - 9)
+# FASTBOOT_URL       Normally fastboot will try to load lib.squash in the same way that vmlinuz and initrd
+#		     were loaded. This will force fastboot to download lib.squash using a specific protocol
+#		     and location
+
+AUDIO_LEVEL=67
+TIME_ZONE="America/Los_Angeles"
+SYSLOG_SERVER=local
+#USB_STORAGE_SYNC=On
+#USB_MOUNT_DIR="/mnt/usbdevice"
+#USB_MOUNT_USELABEL="Yes"
+#USB_MOUNT_OPTIONS="utf8,shortname=win95"
+BIND_MOUNT0="home:/root"
+BIND_MOUNT1="boot:/boot"
+BIND_MOUNT2="tsdev:/thinstation"
+FASTBOOT_URL="http://www.thinstation.org"
+DAILY_REBOOT=On
+CUSTOM_CONFIG=Off
+RECONNECT_PROMPT=On
+#DEBUGPAUSE=true
+
+##
+# --- Session Defaults
+# -- Default Settings for all sessions
+#
+# AUTOSTART		ON   Application will be executed immediately at startup
+#			OFF  Application will appear in a menu to be started manually
+# ICONMODE		MANUAL  Default sessions are not created in window manager/idesk or wbar
+#			AUTO    Default sessions types are created in window manager/idesk or wbar
+# ALWAYS_ENTER_SERVER	Whether or not the server entry dialog box is always displayed
+# 			By default, autostarted sessions have this off and menu sessions have this on
+#			OFF will disable the prompt for everything.
+#			ON will enable the prompt for everything.
+# ALLOW_EXIT		Whether or not a user will be allowed to cancel the server address entry.
+# 			By default, autostarted sessions will not be allowed to exit and menu sessions will.
+#			OFF will force entry for everything.
+#			ON will allow exit from everything.
+
+AUTOSTART=On
+ICONMODE=AUTO
+ALWAYS_ENTER_SERVER=Off
+ALLOW_EXIT=Off
+
+##
+# --- Session Details
+#
+# Note:                     # is a number equal to or greater than 0
+#
+# SESSION_#_TITLE           Title description for SESSION. Needed for replimenu.
+# SESSION_#_TYPE            Package type, choose beetwen:
+#                           - vncviewer        Start vncviewer in X
+#                           - rdesktop         Start rdesktop in X
+#                           - x                Start x-terminal session (xdm)
+#                           - xnest            Start x-terminal session (xdm) from within blackbox
+#                           - ssh              Start ssh client in linux console
+#                           - telnet           Start telnet client in linux console
+#                           - ica              Start Citrix ICA client in X
+#                           - ica_wfc          Start ICA Manager
+#                           - openbox          Start openbox window manager session
+#                           - icewm            Start icewm window manager session
+#                           - dillo            Start Web Browser in X
+#                           - tftpd            Start tftp daemon
+#                           - tarantella       Start tarantella client
+#                           - rxvt             Start light xterm client
+#                           - xterm            Start xterm client
+#                           - tn5250           Start AS400 client in linux console
+#                           - nx               Start NX Client Session
+# SESSION_#_AUTOSTART       ON      	Application will be executed immediately at startup
+#                           WINDOW     	Application will be executed immediately at startup in window mode
+#                           FULLSCREEN	Application will be executed immediately at startup in fullscreen mode
+#                           CONSOLE     Application will be executed immediately at startup in console mode
+#                           OFF     	Application will appear in a menu to be started manually
+# SESSION_#_CUSTOM_CONFIG   ON      Allows choosing custom config for when session starts
+#                           OFF     Session boots normally
+# SESSION_#_ICON            ON      Places Icon on Desktop if package xtdesk is selected and
+#                                   in Window Manager Main Menu
+#                           SUBMENU Places Icon on Desktop if package xtdesk is selected and
+#                                   in a Submenu within the window manager
+# SESSION_#_type_SERVER     IP address/hostname of the server
+# SESSION_#_type_OPTIONS    Command line options for the session type
+# SESSION_#_type_USER       Specify the user for sessions types that require a user
+# SESSION_#_type_PASS_ENABLE Can be set to false, to override a session type that wants password input.
+#
+# SESSION_#_type_specific   This allows you to specify specific config file details for certain session
+#                           types.  Currently support is NX and ICA.  Any configuration file setting
+#                           can be changed with this setting.  An example of this is
+#                           SESSION_0_NX_GENERAL_DESKTOP="Gnome"
+#                           SESSION_0_ICA_APPSRV_USEFULLSCREEN="Yes"
+#                           See your application manual for documentation on the settings which
+#                           can be used.
+
+##
+# --- Proxy Options
+#
+# PROXY_MODE			 Can be set to 'auto' or 'manual'.
+# PROXY_AUTOCONFIG		 Set to a url for a PAC file for automatic proxy configuration. Also sets mode to 'auto'. 
+# PROXY_HOST             DNS Name or IP Address of HTTP Proxy Server
+# PROXY_PORT             TCP/IP Port to use on HTTP Proxy Server
+# PROXY_IGNORE		 	 Comma seperated list of hosts for which to bypass the proxy. "localhost,127.0.0.1/8" by default
+# PROXY_MANDATORY		 True/False, If enabled, will use mandatory settings found in /gnome-core/etc/gconf/gconf.xml.mandatory
+#						 otherwise, will use default settings found in /gnome-core/etc/gconf/gconf.xml.defaults
+# PROXY_USER             HTTP Proxy Authentication User
+# PROXY_PASSWORD         HTTP Proxy User Password
+# PROXY_USE_SAME         True/False, If enabled, HTTP Proxy settings will be used for all Protocols
+# PROXY_SECURE_HOST      HTTPS Proxy Host
+# PROXY_SECURE_PORT      HTTPS Proxy Port
+# PROXY_SOCKS_HOST       SOCKS Proxy Host
+# PROXY_SOCKS_PORT       SOCKS Proxy Port
+# PROXY_FTP_HOST         FTP Proxy Host
+# PROXY_FTP_PORT         FTP Proxy Port
+
+
+#PROXY_HOST=192.168.1.1
+#PROXY_PORT=8080
+#PROXY_USE_SAME=true
+#PROXY_IGNORE="localhost,127.0.0.1/8"
+
+##
+# --- Gtk Theme Engine Selection
+#
+# GTK_THEME              Selects the theme engine that gtk will use to
+#                        render buttons and sliders. Adwaita by default
+#                        Set to ALL to include all theme engines.
+#                        Available themes:
+#                                         Adwaita
+#                                         Crux
+#                                         Industrial
+#                                         Mist
+#                                         Redmond
+#                                         ThinIce
+#                                         Xfce   if xfwm4 package is included
+
+
+GTK_THEME=Adwaita
+# Activate legacy provider to support legacy algorithms such as MD4, SHA1, and RC4.
+# This is required for FreeRDP to work with older servers that do not support modern algorithms.
+# For security reasons, it only can be enabled during build time and cannot be enabled at runtime.
+# OPENSSL_LEGACY=true
+
+##
+# XFWM4_COMPOSITING                Boolean that determines whether or not to enable
+#                                  desktop compositing
+# XFWM4_BRIGHTNESS                 Sets the brightness level of the background
+#                                  0 by default. Range -128 to 127
+# XFWM4_SATURATION                 Sets the color saturation level of the background
+#                                  1.0 by default. Range -10.0 to 10.0
+# XFWM4_RED                        Sets the red index for the background color
+#                                  Used in conjunction with BLUE and GREEN
+# XFWM4_BLUE                       Sets the blue index for the background color
+#                                  Used in conjunction with RED and GREEN
+# XFWM4_GREEN                      Sets the green index for the background color
+#                                  Used in conjunction with RED and BLUE
+#
+# --- Xfwm4 Theme Selection
+# XFWM4_THEME                      Selects the theme that xfwm4 will use for window
+#                                  borders and colors. Default by default. Set to ALL to include all themes.
+#								   Otherwise, available themes can be found at:
+#								   /build/packages/xfwm4/lib/themes
+#								   **Available themes may not show up in this path until the first 
+#								   time you build with xfwm4.**
+#
+# DESKTOP_ICON_SIZE                Sets the size of icons on the desktop
+# DESKTOP_FONT_SIZE                Sets the font size for desktop icons
+# DESKTOP_SHOWTRASH=false          hide/display Trash Icon on XFWM Desktop
+# DESKTOP_SHOWHOME=false           hide/display Home Icon on XFWM Desktop
+# DESKTOP_SHOWREMOVEABLE=false     hide/display Removeable Icon on XFWM Desktop
+# DESKTOP_SHOWFILESYSTEM=false     hide/display Filesystems Icon on XFWM Desktop
+# DESKTOP_SHOWUNKNOWN=false	       hide/display Unknown Device Icons on XFWM Desktop
+# DESKTOP_SINGLECLICK=false        enable/disable Single click app start on XFWM Desktop
+# MENU_SHOWCLOCK=false			   hide/display Clock on XFWM's Start Menu
+# MENU_SHOWABOUT=false			   hide/display About on XFWM's Start Menu
+# MENU_SHOWLOGOUT=false			   hide/display Logout on XFWM's Start Menu
+# MENU_SHOWSETTINGS=false		   hide/display Settings on XFWM's Start Menu
+# SCREEN_BLANK_TIME=5			   Sets the time (in minutes) without any user activity before the screen goes blank
+# SCREEN_SUSPEND_TIME=10		   Sets the time (in minutes) without any user activity before the screen enters sleep mode
+# SCREEN_OFF_TIME=15			   Sets the time (in minutes) without any user activity before the screen turns off completely
+# PANEL_AUTOHIDE=false             hide/display Panel behind Window
+# PANEL_PAGER=false                hide/display The workspace switcher
+# PANEL_REV_CLOCKSYSTRAY           If enabled, the systray will be to the left of the clock
+# PANEL_USER=false                 Show the logged in user at the far right of the start bar
+# UDISKS_AUTOMOUNT=true			   If enabled, external media devices will be automatically mounted into Thunar file manager (separate package)
+# XFWM4_START_POSITION="BOTTOM"    Put the startbar at the bottom of the screen instead of the top
+# XFWM4_START_TITLE="Start"        Change the text displayed on the start button
+# XFWM4_START_ICON="freerdp"       Change the icon displayed on the start button
+# XFWM4_START_DISABLE_SUSPEND=off  hide/display Suspend button under Session on the start menu
+# XFWM4_SHOW_SUSPEND=false		   hide/display 
+# XFWM4_KIOSK=true				   If enabled, startbar, address bar and icons will not display
+# XFWM4_CLOCK_FORMAT=%H:%M         Clock Format e.g. European H:M instead of standard US
+
+XFWM4_COMPOSITING=true
+XFWM4_BRIGHTNESS="-33"
+XFWM4_SATURATION=1.0
+XFWM4_RED=0
+XFWM4_BLUE=0
+XFWM4_GREEN=0
+XFWM4_THEME=Xfce
+DESKTOP_ICON_SIZE=38
+DESKTOP_FONT_SIZE=8
+# Global FreeRDP commands affecting all session and icon connections
+# These modify /etc/cmd/freerdp.global and /etc/cmd/freerdp.window
+#  FREERDP_GETUSER=off		# OFF removes user/password prompt
+#  FREERDP_SMARTCARD=on		# Equiv to adding /smartcard
+#  FREERDP_SMARTCARD=00		# Equiv to adding /smartcard:<option>
+#  FREERDP_SOUND=sys:pulse	# Equiv to adding /sound:<option>
+#  FREERDP_CERTIGNORE=off	# ON is adding /cert:ignore
+#  FREERDP_CERT=deny		# Equiv to adding /cert:<option>
+
+#For the full list options, refer to the xfreerdp help
+    
+#SESSION_#_TITLE="Big Bad Server Donald"
+#SESSION_#_TYPE=freerdp
+#SESSION_#_FREERDP_SERVER=192.168.1.1
+#SESSION_#_FREERDP_OPTIONS="/u:user /p:password /bpp:16"
+#SESSION_#_AUTOSTART=Off
+
+# /u:'' gives a blank user name
+#SESSION_#_TITLE="Big Bad Server Road Runner"
+#SESSION_#_TYPE=freerdp
+#SESSION_#_FREERDP_SERVER=192.168.1.1
+#SESSION_#_FREERDP_OPTIONS="/u:'' /bpp:8"
+#SESSION_#_AUTOSTART=Off
+
+#Example on USB and CD redirection for freerdp
+#SESSION_#_TITLE="Remote Desktop"
+#SESSION_#_TYPE=freerdp
+#SESSION_#_FREERDP_SERVER=192.168.1.1
+#SESSION_#_FREERDP_OPTIONS="+drives /multimedia /rfx +fonts +aero"
+#SESSION_#_AUTOSTART=Off
+
+#FREERDP_SELECT_SERVER=true
+#FREERDP_SERVER_0="Big_Bad_Server_Donald"
+#FREERDP_SERVER_0_OPTIONS="/d:thinstation.local"
+#FREERDP_KNOWN_HOST_0="Big_Bad_Server_Donald 7a:a4:af:8a:98:da:50:52:ba:33:8d:e6:15:4e:49:7b:b3"
+#FREERDP_SERVER_1="Big_Bad_Server_Road_Runner"
+#FREERDP_SERVER_1_OPTIONS="/cert:ignore /d:thinstation.local"
+
+SESSION_#_TITLE="Big Bad Server Donald"
+SESSION_#_TYPE=freerdp
+SESSION_#_AUTOSTART=ON
+SESSION_#_FREERDP_SERVER=192.168.1.1
+SESSION_#_FREERDP_USER=testuser		#Seed the user field
+SESSION_#_FREERDP_PASS_ENABLE=true	#Force asking for a password
+SESSION_#_FREERDP_OPTIONS="/gt:<gateway ip> +drives /multimedia /rfx +fonts +aero"
+#SESSION_#_TYPE=ssh
+#SESSION_#_SSH_SERVER=192.168.1.2
+# To add a banner to the login, update /build/packages/lightdm/build/banner.html with any necessary text, then run
+# wkhtmltoimage --format svg --width 1920 --height 1080 /build/packages/lightdm/build/banner.html /build/packages/lightdm/build/banner.svg
+# Then set LIGHTDM_BANNER=true, it's false by default.
+#LIGHTDM_BANNER=true
+#	Various Options for controlling icon preferences
+#ICONS_COMPOSITE_THEME_ORDER	Attempts to save space by compositing icon themes
+#				on top of each other from first to last. The last
+#				theme specified should be the most significant.
+#
+#ICONS_CUT_SIZES		Should save some space by dropping some rarely
+#				used icon sizes like scalable and 256x256
+#
+#ICONS_THEME			Sets a specific theme to the default when multiple
+#				themes are included. Don't use with COMPOSITE_THEME
+
+ICONS_COMPOSITE_THEME_ORDER="gnome Tango Neu"
+ICONS_CUT_SIZES="256x256 scalable"
+#ICONS_THEME=Neu
+
+##
+# USE_XRANDR		Use xrandr to set diplay size and orientation
+# XRANDR_OPTIONS	Specific options to pass to xrandr instead of just the bootresolution
+
+X_DEVICE_OPTION1="swcursor On"
+USE_XRANDR=TRUE
+#XRANDR_OPTIONS="-s 1680x1050"
+
+##
+# -- Card Reader Options
+
+#PCSCD_CARDREADER_PORT           # Specify port for serial card, not needed for USB
+#PCSCD_CARDREADER_TYPE           # Can be SERIAL or USB
+
+#PCSCD_CARDREADER_PORT="/dev/ttyS0"
+#PCSCD_CARDREADER_TYPE="USB"
+
+
+##
+# --- PKG Options
+#
+# PKG_PACKAGES       Choice of packages to download for PKG
+#                    You can also use PKG_PACKAGES1-8 for additional package selections
+#                    This is useful for using multiple network group files
+# PKG_PREFIX         Download PKGs from a subdir of /tftpboot or PKG Path if PKG_PATH
+#                    is set in thinstation.conf
+# PKG_PATH           Path to PKG files if not using tftpboot
+#                    Floppy: /mnt/floppy
+#                    CD-ROM: /mnt/cdrom
+#                    HD:     /mnt/disc/hdX/part1   (first disc, first partition)
+#                    NFS:    /mnt/nfs
+#                    Samba:  /mnt/smb
+# MOD_PACKAGES       Choice of modules to download for MPKG
+#                    You can also use MOD_PACKAGES1-8 for additional package selections
+#                    This is useful for using multiple network group files
+# MOD_PREFIX         Downloads and insmod's a module from a subdir of /tftpboot
+#                    if MOD_PREFIX is set in thinstation.conf
+
+#PKG_PACKAGES="blackbox rxvt"
+#PKG_PREFIX=pkg
+#PKG_PATH=/mnt/cdrom
+#MOD_PACKAGES="usb-hid usb-storage"
+#MOD_PREFIX=modules
+
+
+##
+# --- Networking Options
+#
+# NET_HOSTNAME           Hostname to use if not using a thinstation.hosts file, note
+#                        that the machine MAC address will replace any * if used.
+# NET_SMTP_SERVER        Email server address for error logs
+# NET_SMTP_EMAIL         Email address of administrator
+# NET_TIME_SERVER        Time server on network with which to sync. NTP Time Server. Recommend <country code>.pool.ntp.org
+# NET_TELNETD            Enables built-in telnetd server package
+# NET_REMOTE_ACCESS_FROM List of hostnames/ip address accepted by the server
+#                        for remote control, used by telnetd and www packages
+# NET_USE		 Sets which interfaces to try and enable at boot time
+#			 LAN  Only try and initialize wired interfaces
+#			 WLAN Only try and initialize wireless interfaces (You still need to set other parameters)
+#			 BOTH Try and enable all interfaces
+# 
+# -- Mounting networked filesystems --
+#
+# NET_NFS_SERVER         This is the path to the NFS server, ie
+#                        server:/path/to/share.
+# NET_SMB_SERVER         This is the path to the SMB server, ie
+#                        server:/path/to/share. 
+# NET_SMB_WORKGROUP      Workgroup of samba server
+# NET_SMB_USER           This is the username for SMB mounts, password is
+#                        defined at build time in build.conf
+# NET_LINKWAIT		 Amount of time to wait for a link.
+
+NET_LINKWAIT=6
+NET_USE=BOTH
+#NET_HOSTNAME=donald
+NET_HOSTNAME=ts-*
+NET_TIME_SERVER=pool.ntp.org
+NET_DHCP_TIMEOUT=30
+#NET_SMTP_SERVER=donald
+#NET_SMTP_EMAIL=donald@duck.org.nz
+#NET_TIME_SERVER=mickey
+NET_TELNETD_ENABLED=On
+NET_REMOTE_ACCESS_FROM="duck.quak.org.au 192.168.0.0 .disney.us"
+#NET_NFS_SERVER=bigserver:/opt/thinstation
+#NET_SMB_USER=duck
+
+
+# -- For use in thinstation.conf.buildtime only:
+#
+# NET_USE_DHCP           Enable DHCP Resolution
+#                        ON     Use DHCP, fail if it doesn't get a lease
+#                        OFF    Don't use DHCP, manual configuration required
+#                        BOTH   Use DHCP in first instance, failing to get a lease, try manual config
+# NET_IP_ADDRESS         IP Address of client
+# NET_MASK               Network mask of client
+# NET_GATEWAY            IP Address of gateway
+# NET_DHCP_DELAY	 Delay before continuing script after bringing up interface, only needed if
+#                        using spanning tree "port discovery" in a switched environment.  Default is 0 seconds.
+# NET_FILE_METHOD        Method to download files. Can be either of the following values: tftp, wget, http, scp.
+#                        scp is only available if package ssh is selected in build as a "package".
+#                        With the package netfiles you can use NET_FILE_METHOD, NET_FILE_ENABLED and NET_FILE_ALTERNATE
+#                        to download configuration files (thinstation.conf.group-<my group>, thinstation.conf.<mac-address> etc.)
+# NET_FILE_ENABLED       Use server for config file, On/Off
+# NET_FILE_USER          User to connect to SCP server as
+# NET_FILE_ALTERNATE     Alternate server for vmware or non-standard dhcp servers
+# NET_DNS1               DNS Server 1
+# NET_DNS2               DNS Server 2
+# NET_DNS_SEARCH         Default DNS domain to search
+
+#NET_USE_DHCP=Off
+#NET_IP_ADDRESS=192.168.0.1
+#NET_MASK=255.255.255.0
+#NET_GATEWAY=192.168.0.254
+#NET_DHCP_DELAY=30
+#NET_FILE_ENABLED=Off
+#NET_FILE_METHOD=http
+#NET_FILE_USER=not_needed_for_tftp
+#NET_FILE_ALTERNATE=192.168.0.4
+#NET_DNS1=192.168.0.2
+#NET_DNS2=192.168.0.3
+#NET_DNS_SEARCH=cartoons.org.nz
+
+
+
+##
+# --- Permanent Storage Options
+#
+# STORAGE_PATH           Path to where storage device is mounted to save
+#                        profile settings.  This should be one of
+#                        /mnt/usbdevice/sdX/partX or disc
+#                        /mnt/floppy
+#                        /mnt/disc/hdX/partX
+#                        /mnt/nfs
+#                        /mnt/smb
+#
+#                        Note that the profile settings are stored under
+#                        a subfolder for this path.  So the path to the
+#                        stored settings would be something like
+#                        /mnt/floppy/thinstation.profile
+#                        See the FAQ on the website for more details on this
+#
+#                        Also checkout README.IMPORTANT for the valid
+#                        config files which you can place here
+#                        a typical file to store config file settings is
+#                        /mnt/floppy/thinstation.profile/thinstation.conf.user
+#
+#                        Also note that the .profile can be changed by using
+#                        the below STORAGE_PREFIX
+# STORAGE_PREFIX         This is the prefix for the folder name to store settings
+#                        in on the storage device. You can also use one of the
+#                        special characters below.
+#
+#                        M = Mac Address
+#                        H = Hostname
+#                        I = Ip Address
+#
+#                        Note default prefix for storing the profile is
+#                        .profile
+# STORAGE_CONFIG1-8      This is the path for any user defined settings
+#                        which will always override the profile path above
+#                        The files are tried on order on each device specified
+
+
+#STORAGE_PATH=/mnt/nfs
+#STORAGE_PREFIX=H
+#STORAGE_CONFIG1=/mnt/floppy
+#STORAGE_CONFIG2=/mnt/cdrom
+#STORAGE_CONFIG3=/mnt/disc/hda/part1
+#STORAGE_CONFIG4=/mnt/usbdevice/sda/part1
+

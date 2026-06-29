@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash -n \"/mnt/e/Usuarios/vmuela/OneDrive - Educantabria/_20FP25-26/Dep/IAC-IESMHP/Ubuntu/ISO/26.04/utiles/NombreIP.sh\")",
+      "Bash(bash -n \"E:\\\\Usuarios\\\\vmuela\\\\OneDrive - Educantabria\\\\_20FP25-26\\\\Dep\\\\IAC-IESMHP\\\\Ubuntu\\\\ISO\\\\26.04\\\\utiles\\\\NombreIP.sh\")",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

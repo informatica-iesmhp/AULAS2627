@@ -1,0 +1,21 @@
+---
+# aplicar_rol.yml — Aplica un rol y, si falla, lo anota y continua con el resto.
+#
+# Se incluye en bucle desde roles.yaml (loop_var: rol). El block/rescue AISLA el
+# fallo: si una tarea del rol falla, se omite el resto de ESE rol y se pasa al
+# siguiente, sin abortar el playbook. Los roles fallidos quedan en la lista
+# iac_roles_fallidos, que roles.yaml muestra en el resumen final.
+- name: "Rol: {{ rol }}"
+  block:
+    - name: "Aplicar rol {{ rol }}"
+      ansible.builtin.include_role:
+        name: "{{ rol }}"
+
+  rescue:
+    - name: "Anotar que el rol {{ rol }} fallo"
+      ansible.builtin.set_fact:
+        iac_roles_fallidos: "{{ (iac_roles_fallidos | default([])) + [rol] }}"
+
+    - name: "Avisar del fallo del rol {{ rol }}"
+      ansible.builtin.debug:
+        msg: "El rol '{{ rol }}' fallo en {{ inventory_hostname }}; se continua con el resto."

@@ -1,0 +1,38 @@
+#Primera versión terminada (básica: instala y punto)
+
+#Por hacer:   1- mas elegante la detección de instalación (da error si no está instalado y queda feo)
+#             2- Arreglar redes virtuales (parámetros para crear, crear una por usuario)
+#             0 - Definir una carpeta comun desde donde descargar el bundle (o no hacer proceso si no está) 
+
+
+- name: Comprobar si VMware está instalado
+  shell: vmware --version
+  register: vmware_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Extraer versión instalada de VMware
+  set_fact:
+    vmware_installed_version: "{{ vmware_check.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
+  when: vmware_check.rc == 0
+
+- name: Mostrar versión instalada de VMware
+  debug:
+    msg: "VMware Workstation instalado: {{ vmware_installed_version | default('ninguna') }}"
+
+- name: Copiamos el fichero .bundle al equipo remoto
+  copy:
+    src: "{{ vmware_bundle_path }}"
+    dest: "/tmp/VMware-Workstation.bundle"
+    remote_src: true  # Use true if the file is already on the remote machine
+  when: (vmware_installed_version is not defined or vmware_installed_version != vmware_version) 
+
+- name: Hacer ejecutable el instalador .bundle
+  file:
+    path: "/tmp/VMware-Workstation.bundle"
+    mode: '0755'
+  when: vmware_installed_version is not defined or vmware_installed_version != vmware_version
+
+- name: Ejecutar instalador de VMware
+  command: "/tmp/VMware-Workstation.bundle --eulas-agreed --required --console"
+  when: vmware_installed_version is not defined or vmware_installed_version != vmware_version

@@ -1,0 +1,6 @@
+---
+# Rol zoomit — ZoomIt (Sysinternals) via Chocolatey.
+- name: Instalar ZoomIt
+  chocolatey.chocolatey.win_chocolatey:
+    name: zoomit
+    state: present

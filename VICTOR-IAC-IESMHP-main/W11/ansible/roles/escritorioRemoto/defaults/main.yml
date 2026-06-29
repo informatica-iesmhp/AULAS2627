@@ -1,0 +1,3 @@
+---
+# 1 = exigir autenticacion a nivel de red (NLA, recomendado). 0 = no exigirla.
+rdp_nla: 1

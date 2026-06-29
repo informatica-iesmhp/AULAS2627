@@ -1,0 +1,7 @@
+---
+# Rol gimp — GIMP via Chocolatey.
+- name: Instalar GIMP {{ gimp_version | default('(ultima)', true) }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: gimp
+    version: "{{ gimp_version | default(omit, true) }}"
+    state: present

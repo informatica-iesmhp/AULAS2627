@@ -1,0 +1,7 @@
+---
+virtualbox_series: "7.1"
+#NO funciona bien del todo. No deja instalar la versión exacta . Por ejemplo 7.1.8 no deja 
+virtualbox_version: "7.1.12"
+#OJO: comprobar que el respositorio es correcto para la versión de Mint que se esté usando
+virtualbox_apt_repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian noble contrib"
+

@@ -1,0 +1,90 @@
+################################################################
+### --- ThinStation-NG 7.2 · thinstation.conf.buildtime --- ###
+################################################################
+#
+# Sesion RDP en modo kiosco (pide la IP al arrancar) + acceso SSH.
+# Correcciones aplicadas respecto a la version anterior:
+#   - SESSION_0_TYPE: freexrdp -> freerdp (valor correcto)
+#   - DEKSTOP_SHOWHOME -> DESKTOP_SHOWHOME (errata)
+#   - NET_TELNETD_ENABLED / NET_REMOTE_ACCESS_FROM desactivados (telnet va en
+#     texto plano; el acceso remoto se hace por SSH/dropbear)
+#
+
+# --- Audio ---
+AUDIO_LEVEL=90
+MIC_LEVEL=0
+
+# --- Sesion RDP en modo kiosco ---
+SESSION_0_TYPE=freerdp
+SESSION_0_AUTOSTART=on
+# NO poner SESSION_0_FREERDP_SERVER -> dispara el dialogo de IP
+SESSION_0_FREERDP_OPTIONS="/multimon /dynamic-resolution +clipboard /network:auto /microphone:sys:pulse  /audio-mode:0" 
+FREERDP_CERTIGNORE=on            # equivale a /cert:ignore
+RECONNECT_PROMPT=On              # al cerrar, vuelve al dialogo de IP
+
+# --- Escritorio XFCE ---
+# Nota: con la sesion RDP a pantalla completa (SESSION_0_TYPE=freerdp + AUTOSTART)
+# el escritorio XFCE no llega a verse. Se conserva por si mas adelante anades una
+# sesion grafica xfwm4 ademas del RDP. Es inerte, no molesta.
+XFWM4_COMPOSITING=true
+XFWM4_RED=0
+XFWM4_GREEN=0
+XFWM4_BLUE=0
+XFWM4_START_POSITION="BOTTOM"
+DESKTOP_ICON_SIZE=48
+DESKTOP_FONT_SIZE=8
+DESKTOP_SHOWTRASH=false
+DESKTOP_SHOWHOME=false
+DESKTOP_SHOWREMOVEABLE=true
+DESKTOP_SHOWFILESYSTEM=false
+GTK_THEME=Adwaita
+XFWM4_THEME=Default
+PANEL_PAGER=false
+PANEL_USER=false
+PANEL_REV_CLOCKSYSTRAY=true
+ICONS_THEME="gnome"
+ICONS_CUT_SIZES="256x256 scalable"
+XFWM4_START_ICON=ThinStation
+XTERM_CMD="xfce4-terminal"
+
+# --- Red / zona horaria / idioma ---
+NET_USE=BOTH
+NET_USE_DHCP=on
+NET_HOSTNAME=ts-*
+TIME_ZONE=Europe/Madrid
+NET_TIME_SERVER=pool.ntp.org
+LOCALE=es_ES
+# Teclado espanol: se activa con LOCALE=es_ES + package locale-es_ES (ya incluidos).
+# OJO: KEYMAP/KEYBOARD_MAP/X_KEYBSEL NO existen en 7.2 (no anadir).
+
+# --- Acceso remoto ---
+# El acceso remoto se hace por SSH (package sshd / dropbear en build.conf).
+# Telnet desactivado a proposito (texto plano, inseguro):
+#NET_TELNETD_ENABLED=ON
+#NET_REMOTE_ACCESS_FROM="0.0.0.0"
+
+# --- Almacenamiento USB ---
+USB_STORAGE_SYNC=on
+
+# --- PXE/TFTP (solo relevante si arrancas por red; inocuo con ISO/USB) ---
+TFTP_BLOCKSIZE=8192
+
+# --- Opciones avanzadas (desactivadas) ---
+#FASTBOOT_URL=http://192.168.1.1/boot
+#BIND_MOUNT0="storage:/mnt/storage"
+#STORAGE_CONFIG1=/mnt/storage
+#MOUNT_0="LABEL=boot     /boot           auto    x-mount.mkdir,defaults  0       0"
+#MOUNT_1="LABEL=home     /home           auto    x-mount.mkdir,defaults  0       0"
+#MOUNT_2="LABEL=swap     swap            swap    defaults        0       0"
+
+# --- Multimonitor ---
+# Verificado contra base/etc/thinstation.functions (use_xrandr) en 7.2:
+#   - USE_XRANDR=On + XRANDR_OPTIONS="dualscreen" autodetecta los monitores:
+#       * 2 conectados (puesto fisico)  -> EXTIENDE el escritorio (--left-of),
+#         y al NO fijar SCREEN_RESOLUTION cada monitor usa su resolucion nativa
+#         (bien para monitores heterogeneos). /multimon de RDP reparte ambos.
+#       * 1 conectado (VM / puesto simple) -> resolucion normal.
+USE_XRANDR=On
+XRANDR_OPTIONS="dualscreen"
+# Las antiguas SET_RESOLUTION_MULTIMONITOR_EXPAND/_AUTOSCALE NO se leen en 7.2
+# (solo existen en las plantillas de conf/); se omiten a proposito.

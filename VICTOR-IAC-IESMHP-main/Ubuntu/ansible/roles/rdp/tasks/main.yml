@@ -1,0 +1,158 @@
+# Rol `rdp` — acceso remoto por RDP usando el servidor nativo de GNOME
+# (gnome-remote-desktop) que trae Ubuntu Desktop 26.04. Sustituye al antiguo
+# rol `xrdp`.
+#
+# ESTRATEGIA (tras los bugs 2026-05-16/17): NO se configura con `grdctl`.
+# En gnome-remote-desktop 50 + VM sin TPM, las escrituras de `grdctl --system
+# rdp set-tls-*/enable` solo cuajan con el daemon vivo y se perdían en el
+# primer arranque desatendido (el daemon volcaba su estado vacío sobre
+# grd.conf). En su lugar se DESPLIEGAN directamente los dos ficheros de
+# configuración (texto plano, deterministas), y un servicio
+# `iac-rdp-config.service` los reafirma en CADA arranque, Before=
+# gnome-remote-desktop.service (mismo patrón que `iac-gdm-noautologin.service`).
+
+- name: Instalar gnome-remote-desktop (servidor RDP nativo de GNOME)
+  apt:
+    name: gnome-remote-desktop
+    state: present
+    update_cache: false
+
+# --- PolicyKit: que los popups de autenticación admin no se bloqueen -----
+# En sesiones RDP/Wayland el diálogo de PolicyKit puede no mostrarse y la
+# acción falla en silencio. Esta regla concede directamente (sin diálogo) las
+# acciones administrativas habituales a los miembros del grupo
+# `rdp_polkit_admin_group`. polkitd recarga rules.d solo (no requiere
+# daemon-reload ni reiniciar polkit — clave para no colgar el primer
+# arranque, ver bugs 2026-05-17).
+
+#Comentamos por si acaso
+- name: Permitir acciones admin por PolicyKit en sesiones RDP (sin diálogo)
+  template:
+    src: 49-allow-user-admin-rdp.rules.j2
+    dest: "{{ rdp_polkit_rules_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Crear el directorio de configuración de gnome-remote-desktop
+  file:
+    path: "{{ rdp_tls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generar el certificado TLS autofirmado para RDP (solo si no existe)
+  command: >
+    openssl req -newkey rsa:2048 -nodes
+    -keyout {{ rdp_tls_dir }}/tls.key
+    -x509 -days {{ rdp_cert_days }}
+    -out {{ rdp_tls_dir }}/tls.crt
+    -subj "{{ rdp_cert_subject }}"
+  args:
+    creates: "{{ rdp_tls_dir }}/tls.crt"
+
+# El usuario interno del servicio (lo crea el paquete gnome-remote-desktop)
+# necesita poder leer la clave y el certificado.
+- name: Asignar propietario y permisos a la clave TLS
+  file:
+    path: "{{ rdp_tls_dir }}/tls.key"
+    owner: gnome-remote-desktop
+    group: gnome-remote-desktop
+    mode: "0600"
+
+- name: Asignar propietario y permisos al certificado TLS
+  file:
+    path: "{{ rdp_tls_dir }}/tls.crt"
+    owner: gnome-remote-desktop
+    group: gnome-remote-desktop
+    mode: "0600"
+
+# --- Despliegue determinista de la configuración -------------------------
+# El script escribe grd.conf (enable + rutas TLS) y credentials.ini
+# (usuario/contraseña) con el contenido EXACTO que en una máquina de
+# referencia quedó funcionando y persistió tras reboot.
+- name: Desplegar el script de configuración RDP (iac-rdp-config.sh)
+  template:
+    src: iac-rdp-config.sh.j2
+    dest: /usr/local/sbin/iac-rdp-config.sh
+    owner: root
+    group: root
+    mode: "0755"
+  no_log: true            # contiene la contraseña RDP
+
+- name: Desplegar la unidad systemd iac-rdp-config.service
+  copy:
+    src: iac-rdp-config.service
+    dest: /etc/systemd/system/iac-rdp-config.service
+    owner: root
+    group: root
+    mode: "0644"
+
+# Se habilita creando el symlink .wants A MANO (es exactamente lo que hace
+# `systemctl enable` para WantedBy=multi-user.target), NO con el módulo
+# `systemd`. Motivo (bug 2026-05-17): el módulo `systemd` con `daemon_reload`
+# CUELGA el playbook en el primer arranque (`systemctl daemon-reload` se
+# bloquea ejecutado dentro de `3-SetupPrimerInicio.service`). El symlink lo
+# lee systemd en el siguiente arranque sin necesidad de daemon-reload, y este
+# arranque ya se configura ejecutando el script directamente más abajo.
+- name: Habilitar iac-rdp-config.service (symlink, sin systemctl/daemon-reload)
+  file:
+    src: /etc/systemd/system/iac-rdp-config.service
+    dest: /etc/systemd/system/multi-user.target.wants/iac-rdp-config.service
+    state: link
+    force: true
+
+- name: Leer el estado actual del servidor RDP de GNOME
+  command: grdctl --system status
+  register: grd_status
+  changed_when: false
+  failed_when: false
+
+# Solo se (re)aplica si el RDP no está ya habilitado con las rutas TLS
+# correctas (idempotencia: no rebota el servicio en cada pase de un aula).
+# Orden: parar daemon → escribir ficheros buenos → arrancar daemon. Con el
+# daemon parado nadie puede pisar grd.conf; al arrancar lo lee ya correcto.
+- name: Aplicar la configuración RDP (si no está ya habilitada)
+  when: >
+    grd_status.rc != 0
+    or 'Status: enabled' not in grd_status.stdout
+    or (rdp_tls_dir + '/tls.crt') not in grd_status.stdout
+    or (rdp_tls_dir + '/tls.key') not in grd_status.stdout
+  block:
+    - name: Parar gnome-remote-desktop antes de escribir la config
+      systemd:
+        name: gnome-remote-desktop.service
+        state: stopped
+
+    - name: Escribir grd.conf y credentials.ini (ejecuta iac-rdp-config.sh)
+      command: /usr/local/sbin/iac-rdp-config.sh
+
+    - name: Arrancar gnome-remote-desktop con la config ya escrita
+      systemd:
+        name: gnome-remote-desktop.service
+        state: started
+
+# OJO: NO usar `enabled: true` aquí. El módulo `systemd` ejecutando
+# `systemctl enable` se CUELGA en el primer arranque dentro de
+# `3-SetupPrimerInicio.service` (igual que `daemon-reload` — bugs 2026-05-17).
+# El arranque automático en cada boot lo garantiza `iac-rdp-config.service`
+# (habilitado por symlink, `Wants=gnome-remote-desktop.service`). Aquí solo se
+# arranca el daemon para ESTE arranque (state: started NO cuelga).
+- name: Asegurar que el servicio gnome-remote-desktop (system) está activo (este arranque)
+  systemd:
+    name: gnome-remote-desktop.service
+    state: started
+
+# Post-condición: si tras desplegar la config el RDP no quedó realmente
+# `enabled` con las rutas TLS correctas, el play debe FALLAR de forma ruidosa
+# (antes el rol terminaba "ok" dejando el RDP apagado en silencio).
+- name: Verificar que el servidor RDP quedó habilitado
+  command: grdctl --system status
+  register: grd_status_post
+  changed_when: false
+  failed_when: >
+    grd_status_post.rc != 0
+    or 'Status: enabled' not in grd_status_post.stdout
+    or (rdp_tls_dir + '/tls.crt') not in grd_status_post.stdout
+    or (rdp_tls_dir + '/tls.key') not in grd_status_post.stdout

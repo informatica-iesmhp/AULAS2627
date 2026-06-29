@@ -1,0 +1,7 @@
+---
+- name: Probar rol nvidia
+  hosts: localhost
+  connection: local
+  become: yes
+  roles:
+    - nvidia

@@ -1,0 +1,18 @@
+[Unit]
+Description=IAC: reafirmar configuracion RDP (gnome-remote-desktop) antes del daemon
+DefaultDependencies=no
+# Wants= arrastra al daemon RDP en cada arranque: así no hace falta
+# `systemctl enable gnome-remote-desktop.service` desde Ansible (que se cuelga
+# en el primer arranque dentro de 3-SetupPrimerInicio.service — bug 2026-05-17).
+Wants=gnome-remote-desktop.service
+Before=gnome-remote-desktop.service
+After=local-fs.target
+ConditionPathExists=/usr/local/sbin/iac-rdp-config.sh
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/iac-rdp-config.sh
+
+[Install]
+WantedBy=multi-user.target

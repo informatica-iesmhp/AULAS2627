@@ -1,0 +1,55 @@
+# ===========================================================================
+# entornoAD.yml — ENTORNO Active Directory: ÚNICO PUNTO DE CAMBIO
+# ---------------------------------------------------------------------------
+# Cambiar el dominio AL QUE SE UNE el equipo SOLO aquí. Lo consumen los TRES
+# sitios que antes lo tenían duplicado:
+#   - el rol Ansible            (tasks/ y templates/, vía include_vars)
+#   - los scripts de utilesAD/  (2-CreaVault.sh y 3-UneAlDominio.sh leen este
+#                                fichero a través de utilesAD/entornoAD.sh)
+#   - 1-CreaUsuarioUnionAD.ps1  (lee de aquí la OU y la cuenta de unión)
+#
+# Conmutar producción ⇄ pruebas = editar las claves de abajo:
+#   Producción : preparaad_dominio: "iesmhp.local"  dnss: "10.0.1.48,10.0.1.54"  ntp: "10.0.1.48"   membership_software: ""       (Windows AD → adcli)
+#   Pruebas    : preparaad_dominio: "mhpies.local"  dnss: "10.0.72.118"           ntp: "10.0.72.118"  membership_software: "samba"  (DC Samba → net ads join)
+# La OU se DERIVA del dominio automáticamente — no hay que tocarla.
+# ===========================================================================
+
+# Dominio AD, en formato DNS y minúsculas.
+preparaad_dominio: "mhpies.local"
+
+# IPs que resuelven el dominio (DNS de los controladores de dominio), separadas
+# por comas. SOLO se usan si el DNS del aula NO resuelve el dominio: en ese caso
+# el rol despliega un split-DNS hacia estos servidores (drop-in de
+# systemd-resolved). VACÍO = desactiva ese arreglo automático.
+preparaad_dominio_dnss: "10.0.72.118"
+
+# Nombre (hoja) de la OU donde se crean las cuentas de equipo. La crea y delega
+# utilesAD/1-CreaUsuarioUnionAD.ps1 en el DC con ESTE mismo nombre.
+preparaad_nombre_ou: "ComputersLinux"
+
+# OU completa (DN) — DERIVADA del dominio + nombre de OU. NO editar: cambia sola
+# con preparaad_dominio (mhpies.local → ...,DC=mhpies,DC=local).
+preparaad_ou: "OU={{ preparaad_nombre_ou }},DC={{ preparaad_dominio.split('.') | join(',DC=') }}"
+
+# Cuenta del dominio DELEGADA solo para unir equipos a la OU de arriba.
+# La crea utilesAD/1-CreaUsuarioUnionAD.ps1 (ejecutado en un DC).
+preparaad_usuario_union: "svc-union-linux"
+
+# Servidor NTP del dominio (normalmente el propio DC), o varios separados por
+# comas. Kerberos exige desfase < 5 min con el DC. El rol detecta el cliente NTP
+# del equipo (chrony en Mint/Debian, systemd-timesyncd en Ubuntu) y lo apunta
+# aquí. VACÍO = no se toca el reloj (default del sistema, p. ej. ntp.ubuntu.com).
+preparaad_ntp: "10.0.72.118"
+
+# Motor de UNIÓN que usa realmd (`realm join --membership-software=...`):
+#   ""       → default de realmd = adcli. Correcto contra Windows AD (producción
+#              iesmhp.local). adcli fija la contraseña de máquina por kpasswd.
+#   "samba"  → realmd delega la unión en `net ads join` (Samba), que fija la
+#              contraseña por el canal de netlogon en vez de por kpasswd. NECESARIO
+#              contra DC Samba (pruebas mhpies.local / "dcfake"): ahí adcli crea la
+#              cuenta por LDAP pero el set-password Kerberos falla con
+#              "Message stream modified" (quirk del kpasswd de Samba). El cliente
+#              de identidad sigue siendo SSSD (se fuerza --client-software=sssd).
+# Requiere el paquete samba-common-bin (ya en preparaad_paquetes). Ver
+# Ubuntu/RegistroDeCambios/20260615-Cambios.md.
+preparaad_membership_software: "samba"

@@ -1,0 +1,47 @@
+---
+
+# Para ejecutar este playbook:     (en la carpeta donde se encuentra)
+#  cd /opt/iesmhpMint/Mint/ansible/
+#    ansible-playbook -i ./equiposIABD.ini roles.yaml --ssh-extra-args="-o StrictHostKeyChecking=no"
+#    ansible-playbook -i ./equiposIABD.ini roles.yaml -l IABD-17
+#    ansible-playbook -i localhost, --connection=local roles.yaml 
+
+#Utiles
+#    ansible all -i ./equiposIABD.ini -m ping -l                      #Ping a todo el mundo
+#    ansible all -i ./equiposIABD.ini -m reboot -l 'all:!IABD-01'     #Reinicia todos menos uno
+#    ansible all -i ./equiposIABD.ini -m shell -a "sh /opt/iesmhpMint/Mint/utiles/actualizaGit.sh" 
+
+
+- hosts: all
+  become: yes
+
+  pre_tasks:
+    - name: Actualizar cache apt (para no hacerlo en cada rol)
+      apt:
+        update_cache: yes
+  roles:
+     - basicos       #cosas que debieras estar desde el livecd pero que recomprobamos #[python, pip, pipx, ansible]
+     - horaHTTP      #Sincroniza la hora en CADA arranque (NTP y, si está filtrado el UDP 123, fallback HTTP). service+timer. Ver roles/horaHTTP/CLAUDE.md
+     - nvidia
+     - flatpak       #Instala el soporte de flatpak y el repositorio de Flathub
+     # Para añadir nuevas aulas: editar roles/comparteaula/defaults/main.yml
+     - certificados
+     - obs
+     - rdp           # Servidor RDP nativo de GNOME (Ubuntu 26.04). Antes era el rol comentado #- xrdp
+     - vscode
+     - clienteNAS    #Cliente NFS del NAS del DEPARTAMENTO: autodescubre exports y los monta RO en /mnt/nasDepInfo (ver roles/clienteNAS/CLAUDE.md)
+     - DirtyFrag     #Evalua y mitiga la vuln. "Dirty Frag" (CVE-2026-43284 ESP/IPsec + CVE-2026-43500 RxRPC): bloquea esp4/esp6/rxrpc
+     - Docker        #Instalación de SISTEMA de Docker para uso ROOTLESS (la parte por usuario la hace rolesUsuario/DockerRootless)
+     - vmware        #sigue fallando la compilación. error raro de: "[Apploader] Use shipped Linux kernel AIO access library"
+     - preparaAD     #Prerequisitos para unión a dominio Active Directory (realmd+SSSD+adcli). NO une al dominio: ver roles/preparaAD/CLAUDE.md
+
+
+#POR HACER:
+#      - hashicorp     #[terraform, packer, vagrant]
+#      - clienteOnedrive
+#      - ¿anaconda? ¿dbeaver?#   
+
+
+
+
+

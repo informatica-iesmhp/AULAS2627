@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  autounattend.xml para Windows 11 (24H2 / 25H2) - IES Miguel Herrero (IAC)
+  ============================================================================
+  Instalacion desatendida que, en el primer inicio de sesion:
+    1. Habilita el Escritorio Remoto SEGURO (RDP con NLA) + firewall.
+    2. Instala GIT con winget (aceptando licencia y fuente).
+    3. Ejecuta "C:\Program Files\IAC-IESMHP\W11\ISO\0b-GitHub.ps1" (embebido en
+       la ISO via $OEM$\$1 por 0-CreaIsoW11.sh), que clona el repo SOBRE esa
+       misma carpeta y lanza 1-Setup.ps1.
+
+  Cuenta administradora por defecto: usuario / usuario@1  (password EN CLARO).
+
+  Revisa antes de usar en hardware real:
+    1. <Value>Windows 11 Pro</Value>  -> edicion exacta de tu install.wim
+                                         (dism /Get-WimInfo /WimFile:...\install.wim
+                                          o, en Linux, wiminfo sources/install.wim)
+    2. DiskID 0 / WillWipeDisk=true    -> BORRA el disco 0. Verifica el disco.
+
+  Activacion: la clave va en BLANCO -> Windows queda SIN ACTIVAR.
+  (Puede autoactivarse si el firmware UEFI tiene clave OEM/licencia digital, o
+   si la red tiene un servidor KMS.)
+  ============================================================================
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+          xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+  <!-- ===================== PASO windowsPE ===================== -->
+  <settings pass="windowsPE">
+
+    <!-- Bypass de requisitos de Windows 11 (TPM, Secure Boot, RAM, CPU, disco).
+         Quitalo si tu hardware cumple los requisitos. -->
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35" language="neutral"
+               versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+
+      <!-- Particionado UEFI/GPT estandar. BORRA el disco 0. -->
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order><Type>EFI</Type><Size>300</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order><Type>MSR</Type><Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order><Type>Primary</Type><Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order><PartitionID>1</PartitionID>
+              <Format>FAT32</Format><Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order><PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order><PartitionID>3</PartitionID>
+              <Format>NTFS</Format><Label>Windows</Label><Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+        <WillShowUI>OnError</WillShowUI>
+      </DiskConfiguration>
+
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <InstallFrom>
+            <!-- Selecciona la edicion por nombre (sin clave de producto) -->
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows 11 Pro</Value>
+            </MetaData>
+          </InstallFrom>
+        </OSImage>
+      </ImageInstall>
+
+      <UserData>
+        <!-- Clave en BLANCO => instalacion SIN activar -->
+        <ProductKey>
+          <Key />
+          <WillShowUI>OnError</WillShowUI>
+        </ProductKey>
+        <AcceptEula>true</AcceptEula>
+      </UserData>
+    </component>
+
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <SetupUILanguage><UILanguage>es-ES</UILanguage></SetupUILanguage>
+      <InputLocale>0000040A</InputLocale>
+      <SystemLocale>es-ES</SystemLocale>
+      <UILanguage>es-ES</UILanguage>
+      <UserLocale>es-ES</UserLocale>
+    </component>
+  </settings>
+
+  <!-- ===================== PASO oobeSystem ===================== -->
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
+               publicKeyToken="31bf3856ad364e35" language="neutral"
+               versionScope="nonSxS">
+
+      <!-- Saltar pantallas del OOBE (incluida la cuenta Microsoft) -->
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+
+      <!-- Cuenta local de administrador: usuario / usuario@1 -->
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>usuario</Name>
+            <Group>Administrators</Group>
+            <DisplayName>usuario</DisplayName>
+            <Password>
+              <Value>usuario@1</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+
+      <!-- Autologon: necesario para que se ejecute FirstLogonCommands -->
+      <AutoLogon>
+        <Username>usuario</Username>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+        <Password>
+          <Value>usuario@1</Value>
+          <PlainText>true</PlainText>
+        </Password>
+      </AutoLogon>
+
+      <!-- Acciones del primer inicio de sesion:
+           1) Escritorio Remoto SEGURO (RDP + NLA + firewall)
+           2) Instalar GIT con winget (acepta licencia y fuente)
+           3) Lanzar 0b-GitHub.ps1 (embebido por 0-CreaIsoW11.sh en
+              $OEM$\$1\Program Files\IAC-IESMHP\W11\ISO) -->
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "reg add 'HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server' /v fDenyTSConnections /t REG_DWORD /d 0 /f; reg add 'HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' /v UserAuthentication /t REG_DWORD /d 1 /f; Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752'"</CommandLine>
+          <Description>Habilitar Escritorio Remoto seguro (RDP + NLA + firewall)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements --silent"</CommandLine>
+          <Description>Instalar Git con winget (aceptando licencia y fuente)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\IAC-IESMHP\W11\ISO\0b-GitHub.ps1"</CommandLine>
+          <Description>Clonar el repo IAC-IESMHP y lanzar 1-Setup.ps1</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS">
+      <InputLocale>0000040A</InputLocale>
+      <SystemLocale>es-ES</SystemLocale>
+      <UILanguage>es-ES</UILanguage>
+      <UserLocale>es-ES</UserLocale>
+    </component>
+  </settings>
+
+</unattend>

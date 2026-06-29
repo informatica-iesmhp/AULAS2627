@@ -1,0 +1,8 @@
+---
+# Rol office365 — Microsoft 365 Apps (Office) via Chocolatey.
+# NOTA: instala las aplicaciones; la ACTIVACION requiere una cuenta/licencia M365.
+
+- name: Instalar Microsoft 365 Apps ({{ office_choco_name }})
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ office_choco_name }}"
+    state: present

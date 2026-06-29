@@ -1,0 +1,53 @@
+
+
+- name: Comprobar si el binario de VS Code existe
+  ansible.builtin.stat:
+    path: /usr/bin/code
+  register: code_instalado
+
+- name: Comprobar si VSCode ya está instalado
+  command: code --no-sandbox --version --user-data-dir /tmp
+  register: code_check
+  changed_when: false
+  ignore_errors: true
+  when: code_instalado.stat.exists
+
+- name: Mostrar versión instalada (si hay)
+  debug:
+    msg: "VS Code ya está instalado: {{ code_check.stdout_lines[0] if code_check.rc == 0 else 'no' }}"
+  when: code_instalado.stat.exists
+
+- name : Hago una copia de los repositoros actualmente configurados
+  shell: cp -r /etc/apt /etc/apt.preVSCODE.bak
+  when: not code_instalado.stat.exists
+  
+- name: Descargar último paquete .deb de VSCode
+  get_url:
+    url: https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64
+    dest: /tmp/vscode_latest.deb
+    mode: '0644'
+  when: not code_instalado.stat.exists
+
+- name: Instalar VSCode
+  apt:
+    deb: /tmp/vscode_latest.deb
+  when: not code_instalado.stat.exists
+
+- name: Eliminar el .deb descargado
+  file:
+    path: /tmp/vscode_latest.deb
+    state: absent
+  when: not code_instalado.stat.exists
+
+- name : Recupero la copia de los repositoros antes de vscode
+  shell: rm -r /etc/apt && cp -r /etc/apt.preVSCODE.bak /etc/apt
+  when: not code_instalado.stat.exists
+
+- name: Actualizamos la caché de APT
+  apt:
+    update_cache: yes
+  when: not code_instalado.stat.exists
+  
+  
+
+

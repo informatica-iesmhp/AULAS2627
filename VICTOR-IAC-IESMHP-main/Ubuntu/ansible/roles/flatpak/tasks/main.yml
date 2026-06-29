@@ -1,0 +1,28 @@
+---
+# Rol flatpak — instala el soporte de Flatpak y añade el repositorio Flathub.
+# Flathub es el repositorio de aplicaciones Flatpak.
+
+- name: Instalar Flatpak y el plugin de Flatpak para GNOME Software
+  apt:
+    name:
+      - flatpak
+      - gnome-software-plugin-flatpak
+    state: present
+    update_cache: false   # la caché ya se refresca en pre_tasks de roles.yaml
+
+- name: Comprobar si el remoto Flathub ya está configurado (a nivel de sistema)
+  command: flatpak remotes --system --columns=name
+  register: flatpak_remotes
+  changed_when: false
+
+- name: Añadir el repositorio Flathub (si no está)
+  command: >
+    flatpak remote-add --if-not-exists
+    flathub https://flathub.org/repo/flathub.flatpakrepo
+  register: flathub_add
+  changed_when: "'flathub' not in flatpak_remotes.stdout"
+  when: "'flathub' not in flatpak_remotes.stdout"
+
+- name: Mostrar los remotos Flatpak configurados
+  debug:
+    msg: "Remotos Flatpak del sistema: {{ flatpak_remotes.stdout_lines | default([]) }}"

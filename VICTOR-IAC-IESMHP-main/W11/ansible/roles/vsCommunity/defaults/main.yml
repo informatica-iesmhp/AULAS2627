@@ -1,0 +1,9 @@
+---
+# Paquete de Chocolatey para Visual Studio Community.
+#   La lista del aula dice "Community 26". A fecha de hoy el paquete estable es
+#   'visualstudio2022community'; cuando exista el de 2026, cambiar aqui a
+#   'visualstudio2026community'.
+vscommunity_choco_name: visualstudio2022community
+# Cargas de trabajo (workloads) opcionales. Ejemplo para .NET de escritorio:
+#   vscommunity_params: "--add Microsoft.VisualStudio.Workload.ManagedDesktop --includeRecommended --passive --norestart"
+vscommunity_params: ""

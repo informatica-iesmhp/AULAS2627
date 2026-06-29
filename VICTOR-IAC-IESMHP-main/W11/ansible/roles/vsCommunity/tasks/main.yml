@@ -1,0 +1,7 @@
+---
+# Rol vsCommunity — Visual Studio Community via Chocolatey.
+- name: Instalar Visual Studio Community ({{ vscommunity_choco_name }})
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ vscommunity_choco_name }}"
+    state: present
+    package_params: "{{ vscommunity_params | default(omit, true) }}"

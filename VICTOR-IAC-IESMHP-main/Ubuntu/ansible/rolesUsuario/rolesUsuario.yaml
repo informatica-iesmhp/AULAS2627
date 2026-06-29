@@ -1,0 +1,29 @@
+---
+# ===========================================================================
+# rolesUsuario.yaml — Playbook de configuración POR USUARIO
+# ---------------------------------------------------------------------------
+# A diferencia de ../roles.yaml (que corre COMO ROOT sobre el equipo), este
+# playbook configura el PERFIL del usuario que lo lanza y se ejecuta COMO ese
+# usuario (become: no global). Solo las tareas que necesitan privilegios
+# (instalar paquetes, desactivar el daemon de sistema, habilitar lingering)
+# piden become puntualmente dentro de cada rol.
+#
+# Uso (como el usuario, NO como root):
+#   cd /opt/IAC-IESMHP/Ubuntu/ansible/rolesUsuario
+#   ansible-playbook -i localhost, --connection=local -K rolesUsuario.yaml
+#
+#   -K  → pregunta la contraseña de sudo (BECOME) una vez, para las pocas
+#         tareas marcadas con become: yes. El resto corre sin privilegios.
+#
+# Limitar a un rol concreto:
+#   ansible-playbook -i localhost, --connection=local -K rolesUsuario.yaml --tags docker
+# ===========================================================================
+
+- name: Configuración del perfil de usuario
+  hosts: localhost
+  connection: local
+  become: no
+  gather_facts: yes
+
+  roles:
+    - DockerRootless    # Instala Docker en modo rootless para el usuario actual

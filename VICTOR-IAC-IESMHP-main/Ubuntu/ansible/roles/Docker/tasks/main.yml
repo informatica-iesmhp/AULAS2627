@@ -1,0 +1,245 @@
+# ===========================================================================
+# Rol Docker — instalación de SISTEMA (como root) para uso ROOTLESS
+# ---------------------------------------------------------------------------
+# Deja el equipo preparado para que usuarios SIN privilegios usen Docker en modo
+# rootless. Hace SOLO la parte que requiere root:
+#   - repositorio oficial de Docker + paquetes (stack + prerrequisitos rootless)
+#   - desactiva el daemon de Docker de sistema (recomendado para rootless)
+#   - subuid/subgid + lingering de los usuarios objetivo
+#
+# La parte que ejecuta cada usuario (dockerd-rootless-setuptool.sh, DOCKER_HOST,
+# systemctl --user) vive en rolesUsuario/roles/DockerRootless.
+#
+# roles.yaml corre con become: yes, así que aquí NO hace falta become puntual.
+# Guía oficial: https://docs.docker.com/engine/security/rootless/
+# tags: docker, rootless
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Repositorio oficial de Docker
+# ---------------------------------------------------------------------------
+- name: Paquetes para configurar el repositorio de Docker
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+    state: present
+    update_cache: false
+  tags: [docker, rootless]
+
+- name: Crear directorio de keyrings de APT
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  tags: [docker, rootless]
+
+- name: Descargar la clave GPG de Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+  tags: [docker, rootless]
+
+- name: Añadir el repositorio APT de Docker
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ docker_arch }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu {{ docker_codename }} stable
+    filename: docker
+    state: present
+    update_cache: yes
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 2. Stack Docker + prerrequisitos de rootless
+# ---------------------------------------------------------------------------
+- name: Instalar Docker y prerrequisitos de rootless
+  ansible.builtin.apt:
+    name: "{{ docker_packages + docker_rootless_prereqs }}"
+    state: present
+    update_cache: false
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 3. Reenvío IPv4 del kernel (net.ipv4.ip_forward)
+# ---------------------------------------------------------------------------
+# Sin esto, `docker compose` avisa "IPv4 forwarding is disabled. Networking will
+# not work." y la red de los contenedores no levanta. Se escribe en
+# /etc/sysctl.d/ (persiste en reinicios) y se aplica al instante (reload: yes).
+- name: Habilitar el reenvío IPv4 (net.ipv4.ip_forward)
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-iac-docker.conf
+    sysctl_set: yes
+    state: present
+    reload: yes
+  when: docker_enable_ip_forward | bool
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 3b. Módulo nf_tables (prerequisito de dockerd-rootless-setuptool.sh)
+# ---------------------------------------------------------------------------
+# Sin nf_tables cargado, `dockerd-rootless-setuptool.sh install` ABORTA con
+# "Missing system requirements ... modprobe nf_tables" (iptables-nft lo necesita
+# para el port-mapping), así que el daemon rootless del usuario NO se instala —
+# ni el servicio de usuario de la sección 6, ni el script manual
+# rolesUsuario/0-ConfiguracionInicial.sh. Ubuntu 26.04 NO carga nf_tables de
+# serie en una instalación desde squashfs. Lo dejamos cargado:
+#   - PERSISTENTE (/etc/modules-load.d) para todos los reinicios.
+#   - EN CALIENTE (modprobe) para el primer arranque en curso, sin esperar a
+#     reiniciar (el rol corre en 3-SetupPrimerInicio y el usuario entra por RDP
+#     en la MISMA sesión de arranque).
+- name: Cargar nf_tables de forma persistente (prerequisito de Docker rootless)
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/iac-docker-rootless.conf
+    content: |
+      # Desplegado por Ansible (rol Docker). nf_tables es prerequisito de
+      # dockerd-rootless-setuptool.sh (iptables-nft). Sin él, el daemon
+      # rootless del usuario no se instala ("Missing system requirements").
+      nf_tables
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [docker, rootless]
+
+- name: Cargar nf_tables en caliente (sin esperar al próximo reinicio)
+  ansible.builtin.command: modprobe nf_tables
+  changed_when: false
+  failed_when: false
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 4. Desactivar el daemon de Docker de SISTEMA (recomendado para rootless)
+# ---------------------------------------------------------------------------
+- name: Desactivar el daemon de Docker de sistema
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: no
+    state: stopped
+  loop:
+    - docker.service
+    - docker.socket
+  failed_when: false
+  when: docker_disable_system_daemon | bool
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 5. subuid/subgid + lingering de los usuarios objetivo
+# ---------------------------------------------------------------------------
+- name: Leer la base de usuarios del sistema
+  ansible.builtin.getent:
+    database: passwd
+  tags: [docker, rootless]
+
+- name: Reducir docker_rootless_users a los que existen
+  ansible.builtin.set_fact:
+    docker_users_present: >-
+      {{ docker_rootless_users
+         | select('in', ansible_facts['getent_passwd'].keys() | list) | list }}
+  tags: [docker, rootless]
+
+- name: Avisar de usuarios objetivo aún inexistentes
+  ansible.builtin.debug:
+    msg: >-
+      AVISO: estos usuarios de docker_rootless_users no existen todavía y se
+      omiten (créalos y reaplica el rol):
+      {{ docker_rootless_users | difference(docker_users_present) }}
+  when: docker_rootless_users | difference(docker_users_present) | length > 0
+  tags: [docker, rootless]
+
+- name: Comprobar si cada usuario ya tiene subuid asignados
+  ansible.builtin.command: "grep -q '^{{ item }}:' /etc/subuid"
+  register: docker_subuid
+  changed_when: false
+  failed_when: false
+  loop: "{{ docker_users_present }}"
+  tags: [docker, rootless]
+
+- name: Asignar subuid/subgid al usuario si faltan
+  ansible.builtin.command: >-
+    usermod
+    --add-subuids {{ docker_subid_range }}
+    --add-subgids {{ docker_subid_range }}
+    {{ item.item }}
+  loop: "{{ docker_subuid.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc != 0
+  tags: [docker, rootless]
+
+- name: Habilitar lingering del usuario (daemon rootless arranca en el boot)
+  ansible.builtin.command: "loginctl enable-linger {{ item }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ item }}"
+  loop: "{{ docker_users_present }}"
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 6. Automatizar el Docker rootless POR USUARIO en cada login (local y dominio)
+# ---------------------------------------------------------------------------
+# El daemon de SISTEMA está desactivado (rootless), así que un usuario que nunca
+# configuró su daemon rootless ve "failed to connect to the docker API at
+# unix:///var/run/docker.sock". Esto lo dispara automáticamente en CADA login:
+#   - parte ROOT (subuid/subgid + lingering): hook pam_exec en common-session.
+#   - parte USUARIO (setuptool install + arrancar docker.service + contexto):
+#     servicio systemd de usuario global (systemctl --global enable).
+# Cubre a los usuarios del DOMINIO porque el helper ROOT escribe el subuid
+# DIRECTAMENTE a /etc/subuid|subgid (usermod solo conoce /etc/passwd y falla con
+# usuarios SSSD). Ver roles/Docker/CLAUDE.md.
+#
+# NOTA primer arranque: se usa `command` (systemctl --global / pam-auth-update),
+# NO el módulo systemd con enabled:/daemon_reload: (que cuelga 3-SetupPrimerInicio,
+# bugs 2026-05-17). `systemctl --global enable` solo escribe symlinks en
+# /etc/systemd/user/, no contacta con ningún gestor.
+- name: Automatización rootless por usuario (hook PAM + servicio de usuario global)
+  when: docker_rootless_auto | bool
+  tags: [docker, rootless]
+  block:
+    - name: Instalar el helper ROOT de preparación rootless (subuid + lingering)
+      ansible.builtin.template:
+        src: iac-docker-rootless-prep.sh.j2
+        dest: /usr/local/sbin/iac-docker-rootless-prep.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Instalar el helper de USUARIO de preparación rootless
+      ansible.builtin.template:
+        src: iac-docker-rootless-user.sh.j2
+        dest: /usr/local/bin/iac-docker-rootless-user.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Instalar el servicio systemd de usuario (global)
+      ansible.builtin.copy:
+        src: iac-docker-rootless.service
+        dest: /etc/systemd/user/iac-docker-rootless.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Habilitar el servicio de usuario para TODOS los usuarios (global)
+      ansible.builtin.command: systemctl --global enable iac-docker-rootless.service
+      args:
+        creates: /etc/systemd/user/default.target.wants/iac-docker-rootless.service
+
+    - name: Instalar el perfil pam-config del hook rootless (pam_exec)
+      ansible.builtin.copy:
+        src: iac-docker-rootless
+        dest: /usr/share/pam-configs/iac-docker-rootless
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Comprobar si el hook pam_exec ya está en common-session
+      ansible.builtin.command: grep -q iac-docker-rootless-prep /etc/pam.d/common-session
+      register: docker_pam_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Activar el hook PAM (pam-auth-update --enable iac-docker-rootless)
+      ansible.builtin.command: pam-auth-update --enable iac-docker-rootless
+      when: docker_pam_enabled.rc != 0

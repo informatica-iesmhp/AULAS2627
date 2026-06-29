@@ -1,0 +1,18 @@
+# /etc/sssd/conf.d/10-iac-ad.conf — opciones del IES por encima del
+# sssd.conf que generó `realm join` (sssd fusiona conf.d/*.conf al final).
+# Desplegado por Ansible (rol preparaAD). Permisos OBLIGATORIOS 0600 root:root
+# (sssd se niega a arrancar si este fichero es legible por otros).
+
+[domain/{{ preparaad_dominio_efectivo | trim }}]
+# False → se inicia sesión como "pepe"; True → exige "pepe@{{ preparaad_dominio_efectivo | trim }}"
+use_fully_qualified_names = {{ 'True' if preparaad_fqn | bool else 'False' }}
+# Home de los usuarios del dominio (AD no suele rellenar unixHomeDirectory).
+# Lo crea pam_mkhomedir en el primer login.
+fallback_homedir = {{ preparaad_fallback_homedir }}
+default_shell = /bin/bash
+# Login offline con credenciales cacheadas (caídas de red / DC apagado).
+cache_credentials = True
+# El default de SSSD ("enforcing") DENIEGA todos los logins si las GPO
+# "Allow log on locally" del dominio no contemplan equipos Linux — bloqueo
+# típico en AD de centros. "permissive" las evalúa pero no bloquea.
+ad_gpo_access_control = {{ preparaad_gpo }}

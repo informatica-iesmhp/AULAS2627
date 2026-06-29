@@ -1,0 +1,3 @@
+showmount -e 10.0.32.253
+Export list for 10.0.32.253:
+/mnt/DiscosRapidos/PruebaRapidosX3 *

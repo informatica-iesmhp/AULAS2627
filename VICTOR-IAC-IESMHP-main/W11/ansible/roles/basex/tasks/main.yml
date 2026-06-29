@@ -1,0 +1,34 @@
+---
+# Rol basex — BaseX (base de datos XML). App Java: requiere un JRE/JDK.
+# No suele estar en Chocolatey/winget, asi que se descarga el ZIP oficial.
+
+- name: Instalar un JRE (Temurin) para BaseX
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ basex_java_choco_name }}"
+    state: present
+  when: basex_instala_java | bool
+
+- name: Comprobar si BaseX ya esta instalado
+  ansible.windows.win_stat:
+    path: "{{ basex_dir }}\\bin\\basex.bat"
+  register: basex_stat
+
+- name: Descargar BaseX {{ basex_version }} (ZIP)
+  ansible.windows.win_get_url:
+    url: "{{ basex_url }}"
+    dest: "{{ ansible_env.TEMP }}\\BaseX{{ basex_version }}.zip"
+  when: not basex_stat.stat.exists
+
+- name: Descomprimir BaseX en {{ basex_dest }}
+  community.windows.win_unzip:
+    src: "{{ ansible_env.TEMP }}\\BaseX{{ basex_version }}.zip"
+    dest: "{{ basex_dest }}"
+    creates: "{{ basex_dir }}\\bin\\basex.bat"
+  when: not basex_stat.stat.exists
+
+- name: Anadir BaseX\bin al PATH del sistema
+  ansible.windows.win_path:
+    elements:
+      - "{{ basex_dir }}\\bin"
+    state: present
+  when: not basex_stat.stat.exists

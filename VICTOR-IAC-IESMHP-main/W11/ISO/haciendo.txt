@@ -1,0 +1,203 @@
+He dejado un windows 11 corriendo. 
+
+Al acabar, tendría que estar activa las 10.0.72.190,
+ accesible directamente por ssh, y por escritorio remoto. 
+
+POr hacer: 
+- si está en vmware (virtualizado) instalar guest additions
+- Aplicaciones con error (revisar): Veyon, BaseX   [CHOCO falla , pero el ansible lo hace bien. COMPROBAR]
+- (COMPROBAR)añadir la actualización completa y el compactado
+- incorporar lógica de particionadao en 1-Setup.ps1 dependiendo del aula. 
+
+
+
+Ejemplo de Tiempos.log: 
+2026-06-25 08:59:50 | github (clonado)         | inicio 2026-06-25 08:55:54 | fin 2026-06-25 08:59:50 | duracion 00:03:55
+2026-06-25 09:04:48 | setup (nmbr/IP/SSH/energ)| inicio 2026-06-25 08:59:52 | fin 2026-06-25 09:04:48 | duracion 00:04:56
+2026-06-25 09:17:26 | aplicaciones             | inicio 2026-06-25 09:04:48 | fin 2026-06-25 09:17:26 | duracion 00:12:37
+2026-06-25 09:17:30 | particionado             | inicio 2026-06-25 09:17:26 | fin 2026-06-25 09:17:30 | duracion 00:00:04
+2026-06-25 09:33:01 | windows update           | inicio 2026-06-25 09:17:30 | fin 2026-06-25 09:33:01 | duracion 00:15:31
+2026-06-25 09:33:09 | compactado (LimpiaW11)   | inicio 2026-06-25 09:33:02 | fin 2026-06-25 09:33:09 | duracion 00:00:07
+=========================================================================================================================
+2026-06-25 09:33:12 | TOTAL (desde install)    | inicio 2026-06-25 08:53:52 | fin 2026-06-25 09:33:12 | duracion 00:39:20
+
+
+
+Ejemplo de 1-Setup.ps1.log
+=========================================================================================================================
+2026-06-25 08:59:51  ===== 1-Setup.ps1 inicio (Reanudar=False) =====
+2026-06-25 08:59:52  Windows instalado (T0 de referencia): 06/25/2026 08:53:52
+2026-06-25 08:59:52  Fase actual: (ninguna: primera pasada)
+2026-06-25 08:59:52  macs.csv: 43 equipos en el listado.
+2026-06-25 08:59:53  Coincide 'Ethernet0' (MAC 00-0C-29-8A-AD-7B) -> Equipo=VM-W11-00 octeto=190
+2026-06-25 08:59:53  Renombrado a VM-W11-00 (efectivo tras el proximo reinicio; lo hara Windows Update).
+2026-06-25 08:59:55  IP actual=10.0.72.31/24 gw=10.0.72.254 dns=10.0.1.54,10.0.1.48 -> nueva estatica=10.0.72.190
+2026-06-25 08:59:55  IP estatica 10.0.72.190/24 aplicada en 'Ethernet0'.
+2026-06-25 08:59:55  OpenSSH: instalando capacidades (si faltan)...
+2026-06-25 08:59:56    OpenSSH.Client ya instalado.
+2026-06-25 09:04:45    + OpenSSH.Server~~~~0.0.1.0 instalado.
+2026-06-25 09:04:46  OpenSSH: servicio sshd en automatico e iniciado.
+2026-06-25 09:04:48  OpenSSH: regla de firewall 'OpenSSH-Server-In-TCP' existente -> habilitada (Allow, todos los perfiles).
+2026-06-25 09:04:48  OpenSSH: DefaultShell = powershell.exe
+2026-06-25 09:04:48  OpenSSH: 5 clave(s) nueva(s) anadida(s) a administrators_authorized_keys.
+2026-06-25 09:04:48  OpenSSH: permisos (icacls) aplicados a C:\ProgramData\ssh\administrators_authorized_keys.
+2026-06-25 09:04:48  Energia: plan 'Alto rendimiento' activado (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c).
+2026-06-25 09:04:48  Energia: suspension desactivada (standby-timeout-ac/dc = 0).
+2026-06-25 09:04:48  TIEMPO [setup (nombre/IP/SSH/energia)] = 00:04:56
+2026-06-25 09:04:48  >>> Ejecutando 2-Aplicaciones.ps1 ...
+2026-06-25 09:17:26  <<< 2-Aplicaciones.ps1 termino con codigo 0
+2026-06-25 09:17:26  TIEMPO [aplicaciones] = 00:12:37
+2026-06-25 09:17:26  >>> Ejecutando 3-Particionado.ps1 ...
+2026-06-25 09:17:30  <<< 3-Particionado.ps1 termino con codigo 0
+2026-06-25 09:17:30  TIEMPO [particionado] = 00:00:04
+2026-06-25 09:17:31  Reanudacion preparada (autologon re-armado + tarea IAC-IESMHP-Reanudar).
+2026-06-25 09:17:31  Windows Update: instalando el modulo PSWindowsUpdate (NuGet + PSGallery)...
+2026-06-25 09:18:02  Windows Update: 1 actualizacion(es) pendiente(s); instalando...
+2026-06-25 09:18:11    WU: KB5007651 Actualización de Windows Security platform: KB5007651 (versión 10.0.29554.1001)
+2026-06-25 09:18:11    WU: KB890830 Herramienta de eliminación de software malintencionado de Windows x64, v5.142 (KB890830)
+2026-06-25 09:18:11    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.271.0) - Canal actual (ampliado)
+2026-06-25 09:18:11    WU:  Broadcom Inc. Driver Update (9.17.11.3)
+2026-06-25 09:18:11    WU: KB5087051 2026-05 .NET Framework Actualización de seguridad (KB5087051)
+2026-06-25 09:18:11    WU: KB5094126 2026-06 Actualización de seguridad (KB5094126) (26200.8655)
+2026-06-25 09:18:13    WU: KB5007651 Actualización de Windows Security platform: KB5007651 (versión 10.0.29554.1001)
+2026-06-25 09:18:18    WU: KB890830 Herramienta de eliminación de software malintencionado de Windows x64, v5.142 (KB890830)
+2026-06-25 09:18:32    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.271.0) - Canal actual (ampliado)
+2026-06-25 09:18:35    WU:  Broadcom Inc. Driver Update (9.17.11.3)
+2026-06-25 09:18:48    WU: KB5087051 2026-05 .NET Framework Actualización de seguridad (KB5087051)
+2026-06-25 09:22:28    WU: KB5094126 2026-06 Actualización de seguridad (KB5094126) (26200.8655)
+2026-06-25 09:22:29    WU: KB5007651 Actualización de Windows Security platform: KB5007651 (versión 10.0.29554.1001)
+2026-06-25 09:23:16    WU: KB890830 Herramienta de eliminación de software malintencionado de Windows x64, v5.142 (KB890830)
+2026-06-25 09:23:26    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.271.0) - Canal actual (ampliado)
+2026-06-25 09:23:28    WU:  Broadcom Inc. Driver Update (9.17.11.3)
+2026-06-25 09:24:01    WU: KB5087051 2026-05 .NET Framework Actualización de seguridad (KB5087051)
+2026-06-25 09:28:45    WU: KB5094126 2026-06 Actualización de seguridad (KB5094126) (26200.8655)
+2026-06-25 09:28:45  Windows Update requiere reinicio (#1). Reiniciando; la tarea IAC-IESMHP-Reanudar reanudara...
+2026-06-25 09:31:28  ===== 1-Setup.ps1 inicio (Reanudar=True) =====
+2026-06-25 09:31:29  Windows instalado (T0 de referencia): 06/25/2026 08:53:52
+2026-06-25 09:31:29  Fase actual: winupdate
+2026-06-25 09:32:00  Windows Update: 1 actualizacion(es) pendiente(s); instalando...
+2026-06-25 09:32:04    WU: KB4052623 Actualización para la plataforma antimalware Microsoft Defender Antivirus: KB4052623 (versión 4.18.26060.3008) - Canal actual (preconfigurado)
+2026-06-25 09:32:04    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.273.0) - Canal actual (ampliado)
+2026-06-25 09:32:08    WU: KB4052623 Actualización para la plataforma antimalware Microsoft Defender Antivirus: KB4052623 (versión 4.18.26060.3008) - Canal actual (preconfigurado)
+2026-06-25 09:32:09    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.273.0) - Canal actual (ampliado)
+2026-06-25 09:32:24    WU: KB4052623 Actualización para la plataforma antimalware Microsoft Defender Antivirus: KB4052623 (versión 4.18.26060.3008) - Canal actual (preconfigurado)
+2026-06-25 09:32:29    WU: KB2267602 Actualización de inteligencia de seguridad para Microsoft Defender Antivirus - KB2267602 (versión 1.453.273.0) - Canal actual (ampliado)
+2026-06-25 09:33:01  Windows Update: no quedan actualizaciones pendientes.
+2026-06-25 09:33:01  TIEMPO [windows update] = 00:15:31
+2026-06-25 09:33:02  Instalando SDelete (Sysinternals) para el zero-fill de LimpiaW11...
+2026-06-25 09:33:07  >>> Ejecutando LimpiaW11.ps1 (limpieza + zero-fill)...
+2026-06-25 09:33:09  <<< LimpiaW11.ps1 termino con codigo 1
+2026-06-25 09:33:09  TIEMPO [compactado (LimpiaW11)] = 00:00:07
+2026-06-25 09:33:11  Autologon desactivado: el equipo arrancara en la PANTALLA DE INICIO DE SESION.
+2026-06-25 09:33:12  TIEMPO TOTAL desde la instalacion de Windows: 00:39:20
+2026-06-25 09:33:12  ===== 1-Setup.ps1 FIN (configuracion completa) =====
+=========================================================================================================================
+
+
+=========================================================================================================================
+2026-06-25 09:04:50  ===== 2-Aplicaciones.ps1 inicio =====
+2026-06-25 09:04:50  winget = C:\Users\usuario\AppData\Local\Microsoft\WindowsApps\winget.exe ; 12 aplicacion(es) en la lista.
+2026-06-25 09:04:50  winget: instalando 'Google Chrome' (Id=Google.Chrome ultima)
+2026-06-25 09:06:10    OK 'Google Chrome' (code=0) en 00:01:20
+2026-06-25 09:06:10  winget: instalando 'OBS Studio' (Id=OBSProject.OBSStudio ultima)
+2026-06-25 09:06:42    OK 'OBS Studio' (code=0) en 00:00:31
+2026-06-25 09:06:42  winget: instalando 'OpenShot' (Id=OpenShot.OpenShot ultima)
+2026-06-25 09:08:38    OK 'OpenShot' (code=0) en 00:01:55
+2026-06-25 09:08:38  winget: instalando 'GIMP' (Id=GIMP.GIMP ultima)
+2026-06-25 09:09:33    OK 'GIMP' (code=0) en 00:00:55
+2026-06-25 09:09:33  winget: instalando 'ZoomIt (Sysinternals)' (Id=Microsoft.Sysinternals.ZoomIt ultima)
+2026-06-25 09:09:40    OK 'ZoomIt (Sysinternals)' (code=0) en 00:00:06
+2026-06-25 09:09:40  winget: instalando 'Visual Studio Code' (Id=Microsoft.VisualStudioCode ultima)
+2026-06-25 09:10:22    OK 'Visual Studio Code' (code=0) en 00:00:42
+2026-06-25 09:10:22  winget: instalando 'Vagrant' (Id=Hashicorp.Vagrant ultima)
+2026-06-25 09:12:06    OK 'Vagrant' (code=0) en 00:01:44
+2026-06-25 09:12:06  winget: instalando 'Notepad++' (Id=Notepad++.Notepad++ ultima)
+2026-06-25 09:12:16    OK 'Notepad++' (code=0) en 00:00:09
+2026-06-25 09:12:16  winget: instalando 'AWS CLI v2' (Id=Amazon.AWSCLI ultima)
+2026-06-25 09:12:38    OK 'AWS CLI v2' (code=0) en 00:00:21
+2026-06-25 09:12:38  winget: instalando 'Visual Studio Community' (Id=Microsoft.VisualStudio.2022.Community ultima)
+2026-06-25 09:13:54    OK 'Visual Studio Community' (code=0) en 00:01:16
+2026-06-25 09:13:54  winget: instalando 'Oracle VirtualBox' (Id=Oracle.VirtualBox ultima)
+2026-06-25 09:14:11    OK 'Oracle VirtualBox' (code=0) en 00:00:16
+2026-06-25 09:14:11  winget: instalando 'Microsoft 365 (Office)' (Id=Microsoft.Office ultima)
+2026-06-25 09:17:19    OK 'Microsoft 365 (Office)' (code=0) en 00:03:08
+2026-06-25 09:17:19  Chocolatey no encontrado; instalandolo (script oficial)...
+2026-06-25 09:17:26  choco = Creating ChocolateyInstall as an environment variable (targeting 'Machine') 
+  Setting ChocolateyInstall to 'C:\ProgramData\chocolatey' Restricting write permissions to Administrators We are setting up the Chocolatey package repository.
+The packages themselves go to 'C:\ProgramData\chocolatey\lib'
+  (i.e. C:\ProgramData\chocolatey\lib\yourPackageName).
+A shim file for the command line goes to 'C:\ProgramData\chocolatey\bin'
+  and points to an executable in 'C:\ProgramData\chocolatey\lib\yourPackageName'.
+
+Creating Chocolatey CLI folders if they do not already exist.
+ chocolatey.nupkg file not installed in lib.
+ Attempting to locate it from bootstrapper. Chocolatey CLI (choco.exe) is now ready.
+You can call choco from anywhere, command line or PowerShell by typing choco.
+Run choco /? for a list of functions.
+You may need to shut down and restart PowerShell and/or consoles
+ first prior to using choco. C:\ProgramData\chocolatey\bin\choco.exe ; 2 aplicacion(es) en la lista.
+2026-06-25 09:17:26  choco: instalando 'Veyon' (Id=veyon ultima)
+2026-06-25 09:17:26    EXCEPCION choco 'Veyon': El término 'Creating ChocolateyInstall as an environment variable (targeting 'Machine') 
+  Setting ChocolateyInstall to 'C:\ProgramData\chocolatey' Restricting write permissions to Administrators We are setting up the Chocolatey package repository.
+The packages themselves go to 'C:\ProgramData\chocolatey\lib'
+  (i.e. C:\ProgramData\chocolatey\lib\yourPackageName).
+A shim file for the command line goes to 'C:\ProgramData\chocolatey\bin'
+  and points to an executable in 'C:\ProgramData\chocolatey\lib\yourPackageName'.
+
+Creating Chocolatey CLI folders if they do not already exist.
+ chocolatey.nupkg file not installed in lib.
+ Attempting to locate it from bootstrapper. Chocolatey CLI (choco.exe) is now ready.
+You can call choco from anywhere, command line or PowerShell by typing choco.
+Run choco /? for a list of functions.
+You may need to shut down and restart PowerShell and/or consoles
+ first prior to using choco. C:\ProgramData\chocolatey\bin\choco.exe' no se reconoce como nombre de un cmdlet, función, archivo de script o programa ejecutable. Compruebe si escribió correctamente el nombre o, si incluyó una ruta de acceso, compruebe que dicha ruta es correcta e inténtelo de nuevo.
+2026-06-25 09:17:26    FALLO 'Veyon' (code=-1) tras 00:00:00; continuo.
+2026-06-25 09:17:26  choco: instalando 'BaseX' (Id=basex ultima)
+2026-06-25 09:17:26    EXCEPCION choco 'BaseX': El término 'Creating ChocolateyInstall as an environment variable (targeting 'Machine') 
+  Setting ChocolateyInstall to 'C:\ProgramData\chocolatey' Restricting write permissions to Administrators We are setting up the Chocolatey package repository.
+The packages themselves go to 'C:\ProgramData\chocolatey\lib'
+  (i.e. C:\ProgramData\chocolatey\lib\yourPackageName).
+A shim file for the command line goes to 'C:\ProgramData\chocolatey\bin'
+  and points to an executable in 'C:\ProgramData\chocolatey\lib\yourPackageName'.
+
+Creating Chocolatey CLI folders if they do not already exist.
+ chocolatey.nupkg file not installed in lib.
+ Attempting to locate it from bootstrapper. Chocolatey CLI (choco.exe) is now ready.
+You can call choco from anywhere, command line or PowerShell by typing choco.
+Run choco /? for a list of functions.
+You may need to shut down and restart PowerShell and/or consoles
+ first prior to using choco. C:\ProgramData\chocolatey\bin\choco.exe' no se reconoce como nombre de un cmdlet, función, archivo de script o programa ejecutable. Compruebe si escribió correctamente el nombre o, si incluyó una ruta de acceso, compruebe que dicha ruta es correcta e inténtelo de nuevo.
+2026-06-25 09:17:26    FALLO 'BaseX' (code=-1) tras 00:00:00; continuo.
+2026-06-25 09:17:26  ----------------------------------------------------------------
+2026-06-25 09:17:26  RESUMEN aplicaciones:  OK=12   FALLOS=2   TOTAL=14
+2026-06-25 09:17:26    [OK   ] winget  Google Chrome                00:01:20  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  OBS Studio                   00:00:31  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  OpenShot                     00:01:55  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  GIMP                         00:00:55  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  ZoomIt (Sysinternals)        00:00:06  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Visual Studio Code           00:00:42  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Vagrant                      00:01:44  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Notepad++                    00:00:09  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  AWS CLI v2                   00:00:21  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Visual Studio Community      00:01:16  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Oracle VirtualBox            00:00:16  (code=0)
+2026-06-25 09:17:26    [OK   ] winget  Microsoft 365 (Office)       00:03:08  (code=0)
+2026-06-25 09:17:26    [FALLO] choco   Veyon                        00:00:00  (code=-1)
+2026-06-25 09:17:26    [FALLO] choco   BaseX                        00:00:00  (code=-1)
+2026-06-25 09:17:26  Aplicaciones con error (revisar): Veyon, BaseX
+2026-06-25 09:17:26  ===== 2-Aplicaciones.ps1 fin =====
+=========================================================================================================================
+
+
+Ejemplo "Particionado.ps1.log" 
+=========================================================================================================================
+2026-06-25 09:17:27  ===== 3-Particionado.ps1 inicio =====
+2026-06-25 09:17:27  Paso 1/4: reasignando lectores opticos (R:) y unidades USB (S, T...).
+2026-06-25 09:17:30    R: 'CCCOMA_X64FRE_ES-ES_DV9' -> R:
+2026-06-25 09:17:30    no hay unidades USB extraibles.
+2026-06-25 09:17:30  Paso 2/4: detectando discos sin formatear (no sistema, no USB).
+2026-06-25 09:17:30  No hay discos sin formatear que preparar. (Normal en una VM de un solo disco.)
+2026-06-25 09:17:30  Paso 4/4: ubicacion de perfiles por defecto.
+2026-06-25 09:17:30  No existe una unidad D: fija; NO se cambia la carpeta de perfiles (se deja en C:\Users).
+2026-06-25 09:17:30  ===== 3-Particionado.ps1 fin =====
+=========================================================================================================================

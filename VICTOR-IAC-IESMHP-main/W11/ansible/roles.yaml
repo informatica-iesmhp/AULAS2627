@@ -1,0 +1,80 @@
+---
+# =============================================================================
+#  Playbook maestro — Configuracion de equipos Windows 11 del IES Miguel Herrero
+#  Conexion: SSH -> PowerShell (shell por defecto), como usuario Administrador.
+#
+#  Requisitos (equipo de control, Linux/WSL):
+#    ansible-galaxy collection install -r requirements.yml
+#
+#  Ejecutar (en esta carpeta):
+#    ansible-playbook -i ./equiposW11.ini roles.yaml
+#    ansible-playbook -i ./equiposW11.ini roles.yaml -l W11-PRUEBA
+#    ansible-playbook -i ./equiposW11.ini roles.yaml --tags chrome    # un solo programa
+#
+#  Utiles:
+#    ansible all -i ./equiposW11.ini -m ansible.windows.win_ping
+#    ansible all -i ./equiposW11.ini -m ansible.windows.win_reboot -l 'all:!W11-PRUEBA'
+# =============================================================================
+
+- hosts: all
+  gather_facts: yes
+
+  vars:
+    # Listado UNICO de roles a instalar (sin separar por profesor). Los primeros
+    # (chocolatey, basicos, escritorioRemoto) son base y conviene mantenerlos al
+    # principio; el resto pueden reordenarse libremente.
+    #
+    # El servidor OpenSSH ya NO es un rol: se instala una sola vez a mano
+    # (ver W11/Utiles/Openssh/ProcedimientoOpenss.txt), porque es el canal por el
+    # que Ansible conecta.
+    iac_roles:
+      - chocolatey
+      - basicos
+      - escritorioRemoto
+      - energiaAltoRendimiento
+      - chrome
+      - veyon
+      - obs
+      - openshot
+      - gimp
+      - zoomit
+      - vscode
+      - vagrant
+      - notepadpp
+      - awscli
+      - vsCommunity
+      - basex
+      # - vmware   # COMENTADO (pendiente de replantear): el paquete Choco falla;
+      #            # habra que descargar el instalador desde una carpeta del NAS.
+      - virtualbox
+      - office365
+
+  pre_tasks:
+    - name: Determinar aula por el tercer octeto de la IP (IABD=.72 / SMRD=.32)
+      ansible.builtin.set_fact:
+        iac_aula: >-
+          {{ 'IABD' if (ansible_facts.ip_addresses | default([]) | select('match', '^10\.0\.72\.') | list | length > 0)
+             else ('SMRD' if (ansible_facts.ip_addresses | default([]) | select('match', '^10\.0\.32\.') | list | length > 0)
+             else 'NINGUNA') }}
+
+    - name: Mostrar aula detectada
+      ansible.builtin.debug:
+        msg: "Equipo {{ inventory_hostname }} -> aula {{ iac_aula }}"
+
+  # Se aplican como tareas (no con la clave 'roles:') para poder envolver cada rol
+  # en un block/rescue: si un rol falla, se anota y se CONTINUA con el resto en vez
+  # de abortar el playbook. Ver aplicar_rol.yml.
+  tasks:
+    - name: Aplicar cada rol sin abortar si uno falla
+      ansible.builtin.include_tasks: aplicar_rol.yml
+      loop: "{{ iac_roles }}"
+      loop_control:
+        loop_var: rol
+        label: "{{ rol }}"
+
+    - name: "Resumen: roles que fallaron"
+      ansible.builtin.debug:
+        msg: >-
+          {{ ('Roles que fallaron en ' ~ inventory_hostname ~ ': ' ~ (iac_roles_fallidos | join(', ')))
+             if (iac_roles_fallidos | default([]) | length > 0)
+             else ('Todos los roles se aplicaron correctamente en ' ~ inventory_hostname) }}

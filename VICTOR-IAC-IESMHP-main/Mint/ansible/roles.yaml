@@ -1,0 +1,51 @@
+---
+
+# Para ejecutar este playbook:     (en la carpeta donde se encuentra)
+#  cd /opt/iesmhpMint/Mint/ansible/
+#    ansible-playbook -i ./equiposIABD.ini roles.yaml --ssh-extra-args="-o StrictHostKeyChecking=no"
+#    ansible-playbook -i ./equiposIABD.ini roles.yaml -l IABD-17
+#    ansible-playbook -i localhost, --connection=local roles.yaml 
+
+#Utiles
+#    ansible all -i ./equiposIABD.ini -m ping -l                      #Ping a todo el mundo
+#    ansible all -i ./equiposIABD.ini -m reboot -l 'all:!IABD-01'     #Reinicia todos menos uno
+#    ansible all -i ./equiposIABD.ini -m shell -a "sh /opt/iesmhpMint/Mint/utiles/actualizaGit.sh" 
+
+
+- hosts: all
+  become: yes
+
+  pre_tasks:
+    - name: Actualizar cache apt (para no hacerlo en cada rol)
+      apt:
+        update_cache: yes
+  roles:
+     - basicos       #cosas que debieras estar desde el livecd pero que recomprobamos #[python, pip, pipx, ansible] 
+     - comparteaula  # Rol unificado: detecta aula por IP (72/32) y configura servidor/cliente NFS según corresponda
+     # Para añadir nuevas aulas: editar roles/comparteaula/defaults/main.yml
+     - nvidia
+     - certificados
+     - obs
+     - xrdp
+     - vscode
+     #TODO: virtualbox falla. A raiz de poner el servidor de caches apt, no instala la versión concreta que le digo
+     - virtualbox #Roles para virtualbox: virtualbox  (instal)  ; virtualboxFUERA (desinstala virtualbox y sus repositorios)
+    #             #TODO: virtualbox no me instalar exactamente la versión que le digo, sino la última disponible 
+     - vmware  #TODO: pide compilar (como sudo) en el primer arranque. Hay que evitarlo.
+     #- contenedores  #[docker y podman  (+sus compose)]    #por hacer
+  
+
+#POR HACER:
+#      - hashicorp     #[terraform, packer, vagrant]
+#      - predominio    #ficheros necesarios para unir el equipo al dominio  
+#      - clienteOnedrive
+#      - ¿anaconda? ¿dbeaver?#   
+
+
+
+
+
+
+#   vars:
+#     obs_version: "30.0.2"  # versión deseada, personalizable desde el playbook o línea de comandos
+  

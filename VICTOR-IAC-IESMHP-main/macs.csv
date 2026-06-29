@@ -1,0 +1,56 @@
+MAC, Equipo, IPf, Comentario
+#,#,#, Las lineas que comiencen por # se considerarán comentarios y deberán ser ignoradas
+#,#,#, MAC:        Dirección mac de la interfaz de red principal. Si esta como DHCP se convertirá en estática manteniendo toda la configuración menos el octeto final (->IPf)
+#,#,#, Equipo:     Nombre a poner en el equipo (si no coincide se cambia) Deberá usarse un prefijo - un número. (Ej: CEIABD-01) Se reservará el -00 para el equipo de profesor
+#,#,#, Comentario: Explicaciones adicionales del equipo (NO SE DEBEN USAR COMAS EN EL COMENTARIO)
+#,#,#, ######################################################################################
+#,#,#, ######################################################################################
+#,#,#, AULA CEIABD                                              #############################
+00:50:56:23:D0:F7, IABD-99, 199, Equipo virtual de pruebas
+d8:bb:c1:35:f1:dd, IABD-00, 120, Equipo de profesores  
+d8:bb:c1:38:71:6f, IABD-01, 121, equipo alumno
+d8:bb:c1:38:93:ad, IABD-02, 122, equipo alumno
+d8:bb:c1:38:94:25, IABD-03, 123, equipo alumno
+d8:bb:c1:38:93:a2, IABD-04, 124, equipo alumno
+d8:bb:c1:38:93:b1, IABD-05, 125, equipo alumno
+d8:bb:c1:38:94:69, IABD-06, 126, equipo alumno
+d8:bb:c1:38:93:e8, IABD-07, 127, equipo alumno
+d8:bb:c1:38:93:8a, IABD-08, 128, equipo alumno
+d8:bb:c1:38:93:ae, IABD-09, 129, equipo alumno
+74:56:3C:65:62:C6, IABD-10, 130, equipo alumno
+74:56:3C:65:5D:51, IABD-11, 131, equipo alumno
+74:56:3C:65:60:7F, IABD-12, 132, equipo alumno
+74:56:3C:95:EA:3C, IABD-13, 133, equipo alumno
+74:56:3C:95:ED:21, IABD-14, 134, equipo alumno
+74:56:3C:95:EB:55, IABD-15, 135, equipo alumno
+74:56:3C:95:EC:10, IABD-16, 136, equipo alumno
+74:56:3C:95:EB:87, IABD-17, 137, equipo alumno
+74:56:3C:95:EA:81, IABD-18, 138, equipo alumno
+74:56:3c:95:eb:d5, IABD-19, 139, equipo alumno
+74:56:3c:95:eb:57, IABD-20, 140, equipo alumno
+#,#,#, ######################################################################################
+#,#,#, AULA DISTANCIA                                              ##########################
+bc:fc:e7:05:76:08, SMRD-00, 120, equipo alumno
+08:bf:b8:40:09:82, SMRD-01, 121, equipo alumno 
+bc:fc:e7:05:73:d1, SMRD-02, 122, equipo alumno
+bc:fc:e7:05:72:58, SMRD-03, 123, equipo alumno
+bc:fc:e7:05:70:f8, SMRD-04, 124, equipo alumno
+bc:fc:e7:05:71:4a, SMRD-05, 125, equipo alumno
+bc:fc:e7:04:bb:57, SMRD-06, 126, equipo alumno
+bc:fc:e7:05:71:60, SMRD-07, 127, equipo alumno 
+bc:fc:e7:05:72:e9, SMRD-08, 128, equipo alumno
+bc:fc:e7:05:72:9a, SMRD-09, 129, equipo alumno
+bc:fc:e7:04:bc:ed, SMRD-10, 130, equipo alumno
+bc:fc:e7:05:73:47, SMRD-11, 131, equipo alumno
+bc:fc:e7:05:73:cc, SMRD-12, 132, equipo alumno
+bc:fc:e7:05:75:7e, SMRD-13, 133, equipo alumno
+bc:fc:e7:05:73:63, SMRD-14, 134, equipo alumno+LUIS
+bc:fc:e7:05:73:c8, SMRD-15, 135, equipo alumno+BELEN+ROBERTO
+bc:fc:e7:04:30:c0, SMRD-16, 136, equipo alumno
+bc:fc:e7:05:73:d0, SMRD-17, 137, equipo alumno+ANGELICA
+bc:fc:e7:05:73:d5, SMRD-18, 138, equipo alumno+VICTOR
+#,#,#, ######################################################################################
+
+
+#MÁQUINAS W11
+00:0C:29:8A:AD:7B,  VM-W11-00, 190, Máquina virtual Windows 11 de pruebas

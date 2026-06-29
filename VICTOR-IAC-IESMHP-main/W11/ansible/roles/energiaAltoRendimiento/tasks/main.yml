@@ -1,0 +1,27 @@
+---
+# Rol energiaAltoRendimiento — fuerza el plan de energia "Alto rendimiento" y
+# desactiva la suspension del equipo. No instala software: solo reconfigura la
+# energia con powercfg (equivalente CLI del "Plan de energia" del Panel de control).
+#
+# GUID 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c = plan integrado "Alto rendimiento"
+# (es fijo e independiente del idioma de Windows).
+
+- name: Consultar el plan de energia activo
+  ansible.windows.win_shell: powercfg /getactivescheme
+  register: energia_activo
+  changed_when: false
+
+- name: Activar el plan de energia "Alto rendimiento"
+  # Solo se cambia si no esta ya activo (idempotencia): /setactive siempre
+  # devuelve rc 0, asi que comparamos el GUID con el del plan activo.
+  ansible.windows.win_shell: powercfg /setactive {{ energia_plan_guid }}
+  when: energia_plan_guid | lower not in (energia_activo.stdout | lower)
+  changed_when: true
+
+- name: Desactivar la suspension del equipo (corriente alterna y bateria)
+  # standby-timeout 0 = "Poner al equipo en estado de suspension: Nunca".
+  # Se aplica a CA (-ac) y bateria (-dc); en sobremesa el -dc es inocuo.
+  ansible.windows.win_shell: |
+    powercfg /change standby-timeout-ac 0
+    powercfg /change standby-timeout-dc 0
+  changed_when: false

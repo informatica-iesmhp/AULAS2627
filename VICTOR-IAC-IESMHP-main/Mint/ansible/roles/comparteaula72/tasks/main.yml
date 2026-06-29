@@ -1,0 +1,99 @@
+---
+
+#Suponemos un nombre de equipo tipo "pruebas-00". Establezco en una variable el valor 00 a partir del nombre del equipo.
+- set_fact:
+    aula_equipo: "{{ ansible_hostname.split('-')[0] }}"
+    numero_equipo: "{{ ansible_hostname.split('-')[-1] }}"
+    idservidor: "98"
+
+# Mostramos los fact 
+- name: Mostrar el número de equipo
+  debug:
+    msg: "El número de equipo es: {{ numero_equipo }} del aula {{ aula_equipo }} "
+
+
+
+#Si el número de equipo es 00, configuramos el servidor NFS. En caso contrario, montamos la carpeta compartida.
+- name: Configurar servidor NFS si es el equipo 00
+  when: numero_equipo == "00"
+  block:
+    - name: Instalar servidor NFS
+      apt:
+        name: nfs-common, nfs-kernel-server
+        state: present
+        update_cache: false
+    - name: Crear carpeta compartida
+      file:
+        path: "{{ carpeta_nfs }}"
+        state: directory
+        owner: nobody
+        group: nogroup
+        mode: '0777'
+        recurse: yes
+    - name: Crear enlace simbólico en "/ComparteProfesor" hacia "/home/ComparteProfesor"
+      file:
+        src: "{{ carpeta_nfs }}"
+        dest: "{{ nfs_mount_point }}"
+        state: link 
+    - name: Configurar export NFS
+      lineinfile:
+        path: /etc/exports
+        line: "{{ carpeta_nfs }} 10.0.72.0/24(rw,sync,no_subtree_check)"
+        create: yes
+        state: present
+
+    - name: Aplicar exportfs
+      command: exportfs -a
+
+    - name: Reiniciar NFS
+      service:
+        name: nfs-kernel-server
+        state: restarted
+        enabled: true
+
+    - name: Permitir NFS en UFW desde la subred
+      ufw:
+        rule: allow
+        from_ip: "10.0.72.0/24"
+        port: nfs
+
+    - name: Habilitar UFW (si aún no está habilitado)
+      command: ufw enable
+      args:
+        stdin: "s"
+      register: ufw_enable
+      failed_when: false
+      changed_when: "'Firewall is active' in ufw_enable.stdout"
+
+- name: Configurar servidor NFS si es el equipo 00
+  when: numero_equipo != "00"
+  block:
+    - name: Instalar cliente NFS
+      apt:
+        name: nfs-common
+        state: present
+        update_cache: false
+
+    - name: Check if mount point exists
+      stat:
+        path: "{{ nfs_mount_point }}"
+      register: mount_point_stat
+
+    - name: Crear punto de montaje
+      file:
+        path: "{{ nfs_mount_point }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: not mount_point_stat.stat.exists
+
+    - name: Añadir entrada a /etc/fstab
+      mount:
+        path: "{{ nfs_mount_point }}"
+        src: "{{ nfs_server_ip }}:{{ nfs_server_path }}"
+        fstype: nfs
+        opts: "{{ nfs_mount_options }}"
+        state: mounted
+
+

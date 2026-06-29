@@ -1,0 +1,46 @@
+---
+
+#Suponemos un nombre de equipo tipo "pruebas-00". Establezco en una variable el valor 00 a partir del nombre del equipo.
+- set_fact:
+    aula_equipo: "{{ ansible_hostname.split('-')[0] }}"
+    numero_equipo: "{{ ansible_hostname.split('-')[-1] }}"
+    idservidor: "98"
+
+# Mostramos los fact 
+- name: Mostrar el número de equipo
+  debug:
+    msg: "El número de equipo es: {{ numero_equipo }} del aula {{ aula_equipo }} "
+
+
+#Si el número de equipo es 00, configuramos el servidor NFS. En caso contrario, montamos la carpeta compartida.
+- name: Configurar servidor NFS si es el equipo 00
+  block:
+    - name: Instalar cliente NFS
+      apt:
+        name: nfs-common
+        state: present
+        update_cache: false
+
+    - name: Check if mount point exists
+      stat:
+        path: "{{ nfs_mount_point }}"
+      register: mount_point_stat
+
+    - name: Crear punto de montaje
+      file:
+        path: "{{ nfs_mount_point }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: not mount_point_stat.stat.exists
+
+    - name: Añadir entrada a /etc/fstab
+      mount:
+        path: "{{ nfs_mount_point }}"
+        src: "{{ nfs_server_ip }}:{{ nfs_server_path }}"
+        fstype: nfs
+        opts: "{{ nfs_mount_options }}"
+        state: mounted
+
+

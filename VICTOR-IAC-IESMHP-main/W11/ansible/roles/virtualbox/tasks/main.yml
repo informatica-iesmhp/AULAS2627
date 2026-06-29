@@ -1,0 +1,7 @@
+---
+# Rol virtualbox — Oracle VirtualBox via Chocolatey.
+- name: Instalar VirtualBox {{ virtualbox_version | default('(ultima)', true) }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: virtualbox
+    version: "{{ virtualbox_version | default(omit, true) }}"
+    state: present

@@ -1,0 +1,36 @@
+---
+
+# Para ejecutar este playbook:
+#    ansible-playbook -i ../../equiposSMRD.ini copia.yaml -l SMRD-00 --fork 40     #-l limita a 1,  fork 40 se asegura de hacer todos a la vez
+#    ansible-playbook -i ../../equiposSMRD.ini copia.yaml -l SMRD-06,SMRD-07,SMRD-10,SMRD-11,SMRD-12,SMRD-18 --fork 40     #-l limita a 1,  fork 40 se asegura de hacer todos a la vez
+
+- name: Copiar archivo zip a todos los clientes
+  hosts: all
+  become: yes 
+  gather_facts: no
+  tasks:
+    - name: Asegurarse de que la carpeta /tmp/PRUEBACOPIA no existe antes de copiar
+      ansible.builtin.file:
+        path: /tmp/PRUEBACOPIA
+        state: absent
+    - name: Medimos el tiempo inicial
+      ansible.builtin.command: date +%s
+      register: tiempo_inicial
+
+    # - name: En cada equipo cliente, ejecuta el comando de copia
+    #   command: cp -r /mnt/nasFast/SORD/Plantillas/ /tmp/PRUEBACOPIA
+    
+    - name: Medimos el tiempo final y calculamos la diferencia
+      ansible.builtin.command: date +%s
+      register: tiempo_final
+    - name: Mostrar el tiempo total de copia
+      ansible.builtin.debug:  
+        msg: "Tiempo total de copia en segundos: {{ tiempo_final.stdout | int - tiempo_inicial.stdout | int }}"
+
+    - name: Asegurarse de que la carpeta /tmp/PRUEBACOPIA no existe antes de copiar
+      ansible.builtin.file:
+        path: /tmp/PRUEBACOPIA
+        state: absent
+          
+#Comando ansible para copiar un fichero de configuración a todos los clientes: ????
+# ansible -i ../../equiposSMRD.ini -m copy -a "src=/mnt/nasFast/SORD/Plantillas/W11AODSOR2526.tar.gz dest=/tmp/kk.zip" -b

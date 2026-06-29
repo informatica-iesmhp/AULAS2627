@@ -1,0 +1,5 @@
+---
+# Veyon — software de gestion/monitorizacion de aula (https://veyon.io).
+# Version tomada de la lista del aula. Vaciar ("") para instalar la ultima.
+veyon_version: ""
+veyon_choco_name: veyon

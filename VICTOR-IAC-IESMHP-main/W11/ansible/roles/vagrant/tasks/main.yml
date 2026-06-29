@@ -1,0 +1,12 @@
+---
+# Rol vagrant — HashiCorp Vagrant via Chocolatey.
+- name: Instalar Vagrant
+  chocolatey.chocolatey.win_chocolatey:
+    name: vagrant
+    state: present
+  register: vagrant_install
+
+- name: Aviso si Vagrant se acaba de instalar (requiere reinicio)
+  ansible.builtin.debug:
+    msg: "Vagrant instalado. Suele requerir reiniciar para refrescar el PATH."
+  when: vagrant_install is changed

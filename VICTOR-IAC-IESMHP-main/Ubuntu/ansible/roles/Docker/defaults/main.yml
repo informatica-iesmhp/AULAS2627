@@ -1,0 +1,86 @@
+# Variables del rol Docker (instalación de SISTEMA, como root)
+# ---------------------------------------------------------------------------
+# Este rol deja Docker LISTO para usarse en modo ROOTLESS por usuarios SIN
+# privilegios. Hace toda la parte que requiere root; la parte que ejecuta cada
+# usuario la completa el rol rolesUsuario/roles/DockerRootless (ver su CLAUDE.md).
+
+# Repositorio oficial de Docker (download.docker.com).
+docker_arch: amd64
+
+# Codename del repo APT de Docker. Por defecto se usa el de la distribución.
+# Ubuntu 26.04 "resolute" es muy reciente y puede que Docker AÚN no publique ese
+# codename; en ese caso, sobreescribe con uno LTS compatible:
+#   -e docker_codename=noble
+docker_codename: "{{ ansible_distribution_release }}"
+
+# Stack Docker desde el repo oficial.
+docker_packages:
+  - docker-ce                  # binario dockerd (se usa el wrapper rootless)
+  - docker-ce-cli              # cliente `docker`
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin      # `docker compose`
+  - docker-ce-rootless-extras  # dockerd-rootless-setuptool.sh, rootlesskit
+
+# Prerrequisitos del modo rootless (mapeo de UIDs, bus de usuario, red, overlay).
+docker_rootless_prereqs:
+  - uidmap                     # newuidmap / newgidmap
+  - dbus-user-session          # necesario para `systemctl --user`
+  - slirp4netns                # red en espacio de usuario
+  - fuse-overlayfs             # almacenamiento overlay sin root
+
+# Desactivar el daemon de Docker de SISTEMA (recomendado por la doc oficial para
+# evitar conflictos con el rootless). Ponlo a false si quieres un Docker de
+# sistema intencionado conviviendo con el rootless.
+docker_disable_system_daemon: true
+
+# Usuarios a preparar para Docker rootless (subuid/subgid + lingering). Por
+# defecto, el usuario estándar del despliegue. En equipos con varios usuarios
+# (p. ej. CEIABD) amplía la lista; ten en cuenta el aviso de docker_subid_range.
+docker_rootless_users:
+  - usuario
+
+# Rango subuid/subgid a asignar SI el usuario no tuviera ninguno (65536 ids).
+# OJO: dos usuarios NO pueden compartir el mismo rango. En la práctica, useradd
+# de Ubuntu ya asigna un rango distinto al crear cada usuario, así que esta
+# asignación es solo una red de seguridad para el usuario principal. Si vas a
+# preparar varios usuarios sin subids, créalos con useradd (auto-asigna) en vez
+# de depender de esta variable.
+docker_subid_range: "100000-165535"
+
+# Habilitar el reenvío IPv4 del kernel (net.ipv4.ip_forward=1). Sin esto, al
+# levantar un `docker compose` el daemon avisa "IPv4 forwarding is disabled.
+# Networking will not work." y la red de los contenedores no funciona. Se
+# escribe en /etc/sysctl.d/ (no en /etc/sysctl.conf) y se aplica en caliente.
+docker_enable_ip_forward: true
+
+# ---------------------------------------------------------------------------
+# Automatización del Docker rootless POR USUARIO (login de CUALQUIER usuario,
+# incluidos los del DOMINIO AD) — sección 6 de tasks/main.yml.
+# ---------------------------------------------------------------------------
+# Con el daemon de SISTEMA desactivado (rootless), un usuario que nunca configuró
+# su daemon rootless ve "failed to connect to the docker API at
+# unix:///var/run/docker.sock". Este bloque lo configura SOLO en cada login:
+#   - parte ROOT (subuid/subgid + lingering): hook pam_exec en common-session
+#     (/usr/local/sbin/iac-docker-rootless-prep.sh).
+#   - parte USUARIO (setuptool install + arrancar docker.service + contexto
+#     rootless): servicio systemd de usuario global (systemctl --global enable).
+# Cubre usuarios de dominio porque el subuid se escribe DIRECTAMENTE a fichero
+# (usermod no sirve: solo conoce /etc/passwd, no SSSD).
+
+# Interruptor maestro. A false: no se instala el hook PAM ni el servicio de
+# usuario global (se vuelve al flujo manual de rolesUsuario/DockerRootless).
+docker_rootless_auto: true
+
+# UID mínimo para preparar a un usuario automáticamente (salta cuentas de
+# sistema/root). Locales (>=1000) y de dominio (uid alto) entran; root y
+# servicios quedan fuera.
+docker_rootless_min_uid: 1000
+
+# Tamaño del bloque subuid/subgid asignado a cada usuario (65536 = recomendado).
+docker_subid_block_size: 65536
+
+# Primer subuid/subgid disponible. El hook asigna rangos consecutivos a partir
+# de aquí sin solaparse con los ya existentes (los de useradd y los de la
+# sección 5 de este rol).
+docker_subid_block_start: 100000

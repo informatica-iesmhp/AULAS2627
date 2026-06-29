@@ -1,0 +1,6 @@
+---
+# Rol awscli — AWS Command Line Interface v2 via Chocolatey.
+- name: Instalar AWS CLI
+  chocolatey.chocolatey.win_chocolatey:
+    name: awscli
+    state: present

@@ -1,0 +1,210 @@
+---
+# Para ejecutar este playbook:
+#    ansible-playbook -i ../equipos.ini NombreIP.yaml 
+#    ansible-playbook -i ../equipos.ini NombreIP.yaml --ssh-extra-args="-o StrictHostKeyChecking=no"
+
+# Simple playbook to return machine information (hostname, IP address, and MAC address)
+- name: Recopilo información del sistema
+  hosts: all
+  gather_facts: yes  # Need to gather facts to get system information
+  vars:
+      raiz_scripts: "/opt/iesmhpLinux"
+      raiz_logs: "/var/log/iesmhpLinux"
+      url_macs: "https://raw.githubusercontent.com/victormuelacarriles/IAC-IESMHP/refs/heads/main/macs.csv"
+      local_macs: "{{ raiz_scripts }}/macs.csv"
+  tasks:
+    - name: Display system information
+      debug:
+        msg: |
+          Hostname: {{ ansible_hostname }}
+          IP Address: {{ ansible_default_ipv4.address }}
+          MAC Address: {{ ansible_default_ipv4.macaddress }}
+    - name: Ensure directories exist
+      file: 
+          path: "{{ raiz_scripts }}"
+          state: directory
+          mode: '0755'
+    - name: Get MAC address
+      set_fact:
+          mac_address: "{{ ansible_default_ipv4.macaddress|lower }}"
+
+    - name: Download MAC addresses file from GitHub
+      get_url:
+          url: "{{ url_macs }}"
+          dest: "{{ local_macs }}"
+          force: yes
+          headers:
+              Cache-Control: "no-cache"
+      register: download_result
+      ignore_errors: yes
+
+    - name: Check if MAC address file was downloaded
+      fail:
+          msg: "No se ha encontrado el archivo de MACs: {{ local_macs }}"
+      when: download_result is failed
+
+    - name: Read MAC addresses file
+      command: "cat {{ local_macs }}"
+      register: macs_content
+      changed_when: false
+
+    - name: Find the line with the current MAC address
+      set_fact:
+          info_macs: "{{ item }}"
+      with_items: "{{ macs_content.stdout_lines }}"
+      when: "mac_address in item|lower"
+      register: mac_found
+
+    - name: Set MAC not found facts
+      set_fact:
+          equipo_en_macs: "mint"
+          ip_final_en_macs: ""
+      when: mac_found.skipped is defined and mac_found.skipped
+
+    - name: Display warning message when MAC not found
+      debug:
+          msg: "La MAC {{ mac_address }} no se encuentra en el repositorio"
+      when: mac_found.skipped is defined and mac_found.skipped
+
+    - name: Set device info from MAC file
+      set_fact:
+          equipo_en_macs: "{{ info_macs.split(',')[1] | trim }}"
+          ip_final_en_macs: "{{ info_macs.split(',')[2] | trim }}"
+      when: info_macs is defined
+
+    - name: Show MAC information
+      debug:
+          msg: "Información de la MAC: {{ info_macs }}"
+      when: info_macs is defined
+
+    - name: Get current hostname
+      command: hostname
+      register: current_hostname
+      changed_when: false
+
+    - name: Set fact for hostname change needed
+      set_fact:
+          change_hostname_needed: "{{ current_hostname.stdout != equipo_en_macs }}"
+
+    - name: Show hostname info
+      debug:
+          msg: "Equipo identificado: '{{ equipo_en_macs }}' Nombre actual del equipo: '{{ current_hostname.stdout }}'"
+
+            # - name: Change hostname
+            #   block:
+            #       - name: Update /etc/hostname
+            #           copy:
+            #               content: "{{ equipo_en_macs }}"
+            #               dest: /etc/hostname
+
+#                 - name: Update /etc/hosts
+#                     template:
+#                         content: |
+#                             127.0.0.1 localhost
+#                             127.0.1.1 {{ equipo_en_macs }}
+#                         dest: /etc/hosts
+
+#                 - name: Set hostname
+#                     hostname:
+#                         name: "{{ equipo_en_macs }}"
+#             when: change_hostname_needed
+
+#         - name: Get active network connection
+#             shell: "nmcli -f NAME,TYPE connection show | grep ethernet | sed 's/ethernet//g' | xargs"
+#             register: nmcli_connection
+#             changed_when: false
+
+#         - name: Exit if no Ethernet connection found
+#             fail:
+#                 msg: "No se ha encontrado una conexión Ethernet activa."
+#             when: nmcli_connection.stdout == ""
+
+#         - name: Set network connection facts
+#             set_fact:
+#                 nc_conexion: "{{ nmcli_connection.stdout }}"
+#                 aula: "{{ equipo_en_macs.split('-')[0] | trim }}"
+
+#         - name: Get network details
+#             shell: "nmcli connection show '{{ nc_conexion }}'"
+#             register: network_details
+#             changed_when: false
+
+#         - name: Parse network details
+#             set_fact:
+#                 ip_interfaz: "{{ network_details.stdout | regex_search('connection.interface-name:\\s+(\\w+)', '\\1') | first }}"
+#                 ip_method: "{{ network_details.stdout | regex_search('ipv4.method:\\s+(\\w+)', '\\1') | first }}"
+#                 ip_red: "{{ network_details.stdout | regex_search('IP4.ADDRESS\\[1\\]:\\s+([^\\s]+)', '\\1') | first }}"
+#                 ip_gateway: "{{ network_details.stdout | regex_search('IP4.GATEWAY:\\s+([^\\s]+)', '\\1') | first }}"
+#                 ip_dns1: "{{ network_details.stdout | regex_search('IP4.DNS\\[1\\]:\\s+([^\\s]+)', '\\1') | first | default('8.8.8.8') }}"
+#                 ip_dns2: "{{ network_details.stdout | regex_search('IP4.DNS\\[2\\]:\\s+([^\\s]+)', '\\1') | first | default('8.8.4.4') }}"
+
+#         - name: Set additional IP facts
+#             set_fact:
+#                 ip_redaula: "{{ ip_red.split('.')[0:3] | join('.') }}"
+#                 ip_ip: "{{ ip_red.split('/')[0] }}"
+#                 ip_solofinal: "{{ ip_red.split('.')[3].split('/')[0] }}"
+#                 ip_mascara: "{{ ip_red.split('/')[1] }}"
+
+#         - name: Display IP information
+#             debug:
+#                 msg: "IP Actual (nmcli): {{ ip_red }} ({{ ip_method }}) - Gateway: {{ ip_gateway }} - DNS: {{ ip_dns1 }}, {{ ip_dns2 }} -> {{ ip_solofinal }}"
+
+#         - name: Display aula information
+#             debug:
+#                 msg: "Aula: {{ aula }} - IP_REDAULA: {{ ip_redaula }}"
+
+#         - name: Enable Wake-on-LAN
+#             command: "ethtool -s {{ ip_interfaz }} wol g"
+#             changed_when: true
+
+#         - name: Configure Wake-on-LAN in NetworkManager
+#             command: "nmcli c modify '{{ nc_conexion }}' 802-3-ethernet.wake-on-lan magic"
+#             changed_when: true
+
+#         - name: Configure MAC addresses acceptance
+#             command: "nmcli c modify '{{ nc_conexion }}' 802-3-ethernet.accept-all-mac-addresses 1"
+#             changed_when: true
+
+#         - name: Set fact for correct network aula
+#             set_fact:
+#                 correct_network: "{{ (ip_redaula == '10.0.72' and aula == 'IABD') or (ip_redaula == '10.0.33' and aula == 'SMRD') }}"
+
+#         - name: Configure static IP for correct aula
+#             block:
+#                 - name: Set new static IP
+#                     set_fact:
+#                         ip_estatica_nueva: "{{ ip_redaula }}.{{ ip_final_en_macs }}/24"
+#                         reset_network_needed: true
+
+#                 - name: Change to static IP when currently dynamic
+#                     command: "nmcli con modify '{{ nc_conexion }}' ipv4.addresses '{{ ip_estatica_nueva }}' ipv4.gateway '{{ ip_gateway }}' ipv4.dns '{{ ip_dns1 }} {{ ip_dns2 }}' ipv4.method manual"
+#                     changed_when: true
+#                     when: ip_method == "auto"
+
+#                 - name: Change to correct static IP when IP is wrong
+#                     command: "nmcli con modify '{{ nc_conexion }}' ipv4.addresses '{{ ip_estatica_nueva }}' ipv4.gateway '{{ ip_gateway }}' ipv4.dns '{{ ip_dns1 }} {{ ip_dns2 }}' ipv4.method manual"
+#                     changed_when: true
+#                     when: ip_method != "auto" and ip_red != ip_estatica_nueva
+#             when: correct_network
+
+#         - name: Configure dynamic IP for wrong aula
+#             block:
+#                 - name: Change to dynamic IP
+#                     command: "nmcli con modify '{{ nc_conexion }}' ipv4.method auto"
+#                     changed_when: true
+#                     when: ip_method != "auto"
+#                     register: dynamic_ip_change
+                    
+#                 - name: Set network reset flag
+#                     set_fact:
+#                         reset_network_needed: "{{ dynamic_ip_change.changed }}"
+#             when: not correct_network
+
+#         - name: Reset network connection if needed
+#             command: "nmcli con down '{{ nc_conexion }}' && nmcli connection up '{{ nc_conexion }}'"
+#             changed_when: true
+#             when: reset_network_needed is defined and reset_network_needed
+
+#         - name: Show completion message
+#             debug:
+#                 msg: "Proceso finalizado correctamente."

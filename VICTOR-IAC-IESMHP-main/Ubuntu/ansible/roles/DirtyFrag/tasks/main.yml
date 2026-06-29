@@ -1,0 +1,121 @@
+# Rol DirtyFrag — CVE-2026-43284 (ESP/IPsec) y CVE-2026-43500 (RxRPC)
+# Evalua si el equipo es vulnerable a "Dirty Frag" y, si lo es, lo protege
+# bloqueando y descargando los modulos del kernel afectados.
+# Ref: https://ubuntu.com/blog/dirty-frag-linux-vulnerability-fixes-available
+
+# ---------------------------------------------------------------------------
+# 1) EVALUACION: ¿es susceptible el equipo?
+# ---------------------------------------------------------------------------
+
+- name: DirtyFrag - Comprobar qué módulos vulnerables están cargados ahora mismo
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E '^({{ dirtyfrag_modulos | join("|") }}) ' /proc/modules | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: dirtyfrag_cargados
+  changed_when: false
+  failed_when: false
+
+- name: DirtyFrag - Comprobar si ya existe el fichero de mitigación
+  ansible.builtin.stat:
+    path: "{{ dirtyfrag_conf }}"
+  register: dirtyfrag_conf_stat
+
+- name: DirtyFrag - Leer el fichero de mitigación (si existe)
+  ansible.builtin.slurp:
+    src: "{{ dirtyfrag_conf }}"
+  register: dirtyfrag_conf_data
+  when: dirtyfrag_conf_stat.stat.exists
+
+# El equipo está PROTEGIDO si:
+#   (a) ningún módulo vulnerable está cargado, Y
+#   (b) existe el fichero de mitigación con un 'install ... /bin/false' por módulo
+- name: DirtyFrag - Determinar el estado de protección
+  ansible.builtin.set_fact:
+    dirtyfrag_modulos_cargados: "{{ dirtyfrag_cargados.stdout_lines | default([]) }}"
+    dirtyfrag_blacklist_ok: >-
+      {{ dirtyfrag_conf_stat.stat.exists
+         and dirtyfrag_modulos | reject('in',
+              (dirtyfrag_conf_data.content | default('') | b64decode))
+              | list | length == 0 }}
+
+- name: DirtyFrag - Determinar si está protegido
+  ansible.builtin.set_fact:
+    dirtyfrag_protegido: "{{ (dirtyfrag_modulos_cargados | length == 0) and dirtyfrag_blacklist_ok }}"
+
+# ---------------------------------------------------------------------------
+# 2a) EQUIPO PROTEGIDO: solo informar
+# ---------------------------------------------------------------------------
+
+- name: DirtyFrag - Equipo PROTEGIDO de DirtyFrag
+  ansible.builtin.debug:
+    msg: "✅ PROTEGIDO de DirtyFrag (CVE-2026-43284 / CVE-2026-43500): módulos esp4/esp6/rxrpc bloqueados y no cargados."
+  when: dirtyfrag_protegido
+
+# ---------------------------------------------------------------------------
+# 2b) EQUIPO VULNERABLE: informar y proteger
+# ---------------------------------------------------------------------------
+
+- name: DirtyFrag - Equipo NO PROTEGIDO
+  ansible.builtin.debug:
+    msg: >-
+      ⚠️ NO PROTEGIDO de DirtyFrag (CVE-2026-43284 / CVE-2026-43500).
+      Módulos vulnerables cargados: {{ dirtyfrag_modulos_cargados | join(', ') | default('ninguno', true) }}.
+      Blacklist presente: {{ dirtyfrag_blacklist_ok }}. Aplicando protección...
+  when: not dirtyfrag_protegido
+
+- name: DirtyFrag - Bloquear los módulos vulnerables (modprobe.d)
+  ansible.builtin.copy:
+    dest: "{{ dirtyfrag_conf }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Mitigación DirtyFrag — CVE-2026-43284 (ESP/IPsec) y CVE-2026-43500 (RxRPC)
+      # Generado por el rol Ansible 'DirtyFrag'.
+      # Eliminar este fichero (y regenerar initramfs) cuando el kernel esté parcheado.
+      {% for m in dirtyfrag_modulos %}
+      install {{ m }} /bin/false
+      {% endfor %}
+  when: not dirtyfrag_protegido
+  register: dirtyfrag_conf_escrito
+
+- name: DirtyFrag - Regenerar el initramfs con el bloqueo (lento, 2-4 min)
+  ansible.builtin.command: update-initramfs -u -k all
+  when: dirtyfrag_conf_escrito.changed
+  register: dirtyfrag_initramfs
+  changed_when: true
+
+- name: DirtyFrag - Descargar los módulos vulnerables ya cargados
+  ansible.builtin.command: "modprobe -r {{ item }}"
+  loop: "{{ dirtyfrag_modulos_cargados }}"
+  when: not dirtyfrag_protegido and (dirtyfrag_modulos_cargados | length > 0)
+  register: dirtyfrag_rmmod
+  changed_when: dirtyfrag_rmmod.rc == 0
+  failed_when: false
+
+# ---------------------------------------------------------------------------
+# 3) VERIFICACION FINAL
+# ---------------------------------------------------------------------------
+
+- name: DirtyFrag - Re-comprobar módulos cargados tras la protección
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E '^({{ dirtyfrag_modulos | join("|") }}) ' /proc/modules | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: dirtyfrag_cargados_post
+  changed_when: false
+  failed_when: false
+  when: not dirtyfrag_protegido
+
+- name: DirtyFrag - Resultado final de la protección
+  ansible.builtin.debug:
+    msg: >-
+      {{ '✅ PROTEGIDO: blacklist escrita y módulos descargados.'
+         if (dirtyfrag_cargados_post.stdout_lines | default([]) | length == 0)
+         else '⚠️ Algún módulo sigue cargado ('
+              ~ (dirtyfrag_cargados_post.stdout_lines | join(', '))
+              ~ '): REINICIAR el equipo para completar la protección.' }}
+  when: not dirtyfrag_protegido

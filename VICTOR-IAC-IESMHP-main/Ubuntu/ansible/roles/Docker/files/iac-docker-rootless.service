@@ -1,0 +1,13 @@
+[Unit]
+Description=IAC-IESMHP: prepara el Docker rootless del usuario en su primera sesión
+Documentation=https://docs.docker.com/engine/security/rootless/
+# Solo en sesiones de usuarios reales (no en el gestor systemd de root).
+ConditionUser=!root
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/iac-docker-rootless-user.sh
+# El helper es best-effort (siempre exit 0); no marcamos el servicio fallido.
+
+[Install]
+WantedBy=default.target

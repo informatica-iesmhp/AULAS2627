@@ -1,0 +1,134 @@
+# ===========================================================================
+# Rol DockerRootless — configuración POR USUARIO del Docker rootless
+# ---------------------------------------------------------------------------
+# Completa la instalación rootless COMO EL USUARIO, sin permisos root. La parte
+# de sistema (repo, paquetes, subuid/subgid, lingering, desactivar el daemon de
+# sistema) la hace el rol `roles/Docker`, que corre como root desde roles.yaml.
+#
+# Este rol NO usa become: todo lo que hace cabe en los permisos del usuario.
+# Guía oficial: https://docs.docker.com/engine/security/rootless/
+# tags: docker, rootless
+# ===========================================================================
+- name: Etiquetas del rol
+  ansible.builtin.debug:
+    msg: "Configurando Docker rootless para el usuario '{{ dr_user }}' (uid {{ dr_user_uid }})"
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 0. No tiene sentido ejecutarlo como root
+# ---------------------------------------------------------------------------
+- name: No ejecutar este rol como root
+  ansible.builtin.fail:
+    msg: >-
+      DockerRootless configura el Docker rootless del USUARIO actual.
+      No lo lances como root ni con 'become: yes' global; ejecútalo como
+      el usuario (ver cabecera de rolesUsuario.yaml).
+  when: dr_user_uid | int == 0
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 1. Prerrequisitos de sistema (los deja el rol roles/Docker)
+# ---------------------------------------------------------------------------
+- name: Comprobar que el stack rootless de sistema está instalado
+  ansible.builtin.command: which dockerd-rootless-setuptool.sh
+  register: dr_setuptool
+  changed_when: false
+  failed_when: false
+  tags: [docker, rootless]
+
+- name: Abortar si falta la parte de sistema
+  ansible.builtin.fail:
+    msg: >-
+      No se encuentra 'dockerd-rootless-setuptool.sh'. Falta la instalación de
+      sistema: aplica primero el rol `roles/Docker` como root
+      (cd ../.. && ansible-playbook ... roles.yaml --tags docker) y vuelve a
+      lanzar este playbook.
+  when: dr_setuptool.rc != 0
+  tags: [docker, rootless]
+
+- name: Comprobar que el usuario tiene subuid/subgid asignados
+  ansible.builtin.command: "grep -q '^{{ dr_user }}:' /etc/subuid"
+  register: dr_subuid_ok
+  changed_when: false
+  failed_when: false
+  tags: [docker, rootless]
+
+- name: Avisar si faltan subuid/subgid (el rootless fallará sin ellos)
+  ansible.builtin.debug:
+    msg: >-
+      AVISO: el usuario '{{ dr_user }}' no tiene rango en /etc/subuid; el daemon
+      rootless fallará. Añádelo como root: incluye '{{ dr_user }}' en
+      docker_rootless_users del rol roles/Docker, o ejecuta
+      'sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 {{ dr_user }}'.
+  when: dr_subuid_ok.rc != 0
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 2. Instalar el daemon rootless del usuario
+# ---------------------------------------------------------------------------
+- name: ¿Existe ya la unit docker.service del usuario?
+  ansible.builtin.stat:
+    path: "{{ dr_user_home }}/.config/systemd/user/docker.service"
+  register: dr_user_unit
+  tags: [docker, rootless]
+
+- name: Instalar Docker rootless (dockerd-rootless-setuptool.sh install)
+  ansible.builtin.command: dockerd-rootless-setuptool.sh install
+  environment:
+    PATH: "/usr/bin:/sbin:/usr/sbin:{{ ansible_env.PATH }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ dr_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ dr_user_uid }}/bus"
+  when: not dr_user_unit.stat.exists
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 3. Variables de entorno en ~/.bashrc
+# ---------------------------------------------------------------------------
+- name: Exportar DOCKER_HOST y PATH en ~/.bashrc
+  ansible.builtin.blockinfile:
+    path: "{{ dr_user_home }}/.bashrc"
+    create: yes
+    marker: "# {mark} IAC-IESMHP DockerRootless"
+    block: |
+      # Cliente docker apunta al daemon rootless del usuario
+      export PATH=/usr/bin:$PATH
+      export DOCKER_HOST=unix:///run/user/{{ dr_user_uid }}/docker.sock
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 4. Habilitar y arrancar el servicio de usuario
+# ---------------------------------------------------------------------------
+- name: Habilitar y arrancar docker.service (usuario)
+  ansible.builtin.systemd_service:
+    name: docker.service
+    scope: user
+    enabled: yes
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ dr_user_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ dr_user_uid }}/bus"
+  tags: [docker, rootless]
+
+# ---------------------------------------------------------------------------
+# 5. Comprobación
+# ---------------------------------------------------------------------------
+- name: Verificar el daemon rootless (docker info)
+  ansible.builtin.command: docker info
+  environment:
+    PATH: "/usr/bin:/sbin:/usr/sbin:{{ ansible_env.PATH }}"
+    DOCKER_HOST: "unix:///run/user/{{ dr_user_uid }}/docker.sock"
+  register: dr_info
+  changed_when: false
+  failed_when: false
+  tags: [docker, rootless]
+
+- name: Resultado de la comprobación
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Docker rootless OK (daemon respondiendo en /run/user/'
+         ~ dr_user_uid ~ '/docker.sock)'
+         if dr_info.rc == 0
+         else 'AVISO: docker info falló (rc=' ~ dr_info.rc ~ '). Revisa la
+         sesión systemd de usuario; suele resolverse tras reiniciar la
+         sesión del usuario.' }}
+  tags: [docker, rootless]

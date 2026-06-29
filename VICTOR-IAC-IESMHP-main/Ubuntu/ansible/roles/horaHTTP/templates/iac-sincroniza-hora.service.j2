@@ -1,0 +1,13 @@
+[Unit]
+# {{ ansible_managed }}
+Description=IAC-IESMHP - Sincroniza la hora (NTP, fallback HTTP)
+Documentation=file://{{ horahttp_script }}
+Wants=network-online.target
+After=network-online.target systemd-timesyncd.service
+
+[Service]
+Type=oneshot
+ExecStart={{ horahttp_script }}
+
+[Install]
+WantedBy=multi-user.target
