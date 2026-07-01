@@ -56,6 +56,11 @@ echoverde "       CEIABD        ->Disco pequeño: NVMe 0,5TB (EFI 1G, swap 16G,"
 echoverde "                                       / 100G ext4, p4 ZFS rpool→/home)"
 echoverde "                     ->Disco grande:  SDa  1,0TB (ZFS tank→/datos)"
 echoverde "--------------------------------------------------------------------"
+echoverde "--------------------------------------------------------------------"
+echoverde "       IF04          ->Disco uno (m2 NVMe): NVMe 1TB (EFI 1G, swap 32G,"
+echoverde "                                       / 100G ext4, p4 ZFS rpool→/datos)"
+echoverde "                     ->Disco dos (SATA SSD):  SDa  1,0TB (ZFS tank→/home)"
+echoverde "--------------------------------------------------------------------"
 
 
 

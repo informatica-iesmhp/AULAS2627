@@ -13,8 +13,8 @@ set -euo pipefail
 # los ÚNICOS que se repiten fuera de comun.sh y DEBEN COINCIDIR con los de
 # Ubuntu/ISO/26.04/comun.sh. Todo lo demás (SCRIPT_INSTALL, rutas...) se obtiene
 # cargando comun.sh tras clonar (ver más abajo).
-GITHUB_USER="victormuelacarriles"
-REPO="IAC-IESMHP"
+GITHUB_USER="informatica-iesmhp"
+REPO="AULAS2627"
 # ─────────────────────────────────────────────────────────────────────────────
 GITREPO="https://github.com/${GITHUB_USER}/${REPO}.git"
 DESTDIR="/opt/${REPO}"
