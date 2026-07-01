@@ -25,7 +25,7 @@ IAC_COMUN_CARGADO=1
 
 # ── Identidad del repositorio en GitHub ──────────────────────────────────────
 GITHUB_USER="informatica-iesmhp"
-REPO="AULAS2627
+REPO="AULAS2627"
 RAMA="main"
 GITREPO="https://github.com/${GITHUB_USER}/${REPO}.git"
 # Base para descargar ficheros sueltos del repo sin clonarlo (raw):
@@ -64,5 +64,9 @@ FICHERO_AUTORIZADOS="${RAIZSCRIPTS}/Autorizados.txt"
 # centralizan aquí aunque hoy sólo los usen NombreIP.sh y 3-SetupPrimerInicio.sh.
 RED_IABD="10.0.72"            # aula IABD (CEIABD)
 RED_SMRD="10.0.32"            # aula SMRD / SMRV
+RED_IF04="10.0.22"            # aula IF04 (perfil ZFS invertido, sin proxy)
 PROXY_IABD="http://10.0.72.140:3128"
 PROXY_SMRD="http://10.0.32.119:3128"
+# IF04 no tiene proxy de aula. No se define PROXY_IF04: el bloque que
+# configuraría el proxy en 3-SetupPrimerInicio.sh está comentado/inactivo
+# para todas las aulas hoy (ninguna recibe proxy actualmente).

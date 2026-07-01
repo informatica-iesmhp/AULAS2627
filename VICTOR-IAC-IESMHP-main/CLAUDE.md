@@ -89,9 +89,13 @@ de "primer arranque" (`NombreIP.sh` en Linux, bloque equivalente en `1-Setup.ps1
 
 ### 5. Detección de aula por IP (3er octeto)
 La red del centro codifica el aula en el **tercer octeto**: `10.0.72.x` → **IABD**,
-`10.0.32.x` → **SMRD/SMRV**. Se usa para fijar el **proxy de aula**
-(IABD `10.0.72.140:3128`, SMRD `10.0.32.119:3128`) en apt/winget/choco y para
-decidir servidor vs. cliente NFS. El equipo `-00` suele ser el servidor del aula.
+`10.0.32.x` → **SMRD/SMRV**, `10.0.22.x` → **IF04**. Se usa para fijar el
+**proxy de aula** (IABD `10.0.72.140:3128`, SMRD `10.0.32.119:3128`; IF04 sin
+proxy) en apt/winget/choco y para decidir servidor vs. cliente NFS. El equipo
+`-00` suele ser el servidor del aula (IF04 todavía no tiene equipo `-00`).
+*(Nota: en la línea Ubuntu, el bloque que aplica el proxy en
+`3-SetupPrimerInicio.sh` está hoy comentado/inactivo para todas las aulas —
+ver `Ubuntu/CLAUDE.md`.)*
 
 ### 6. Configuración post-instalación con Ansible
 Tras instalar el SO, la cadena lanza **Ansible** (`roles.yaml`) para instalar el
@@ -139,13 +143,15 @@ software y configurar el equipo. Convenciones compartidas por Ubuntu y W11:
 | **IABD** | `10.0.72.x` | Aula CEIABD. Proxy `10.0.72.140:3128`. |
 | **SMRD / SMRV** | `10.0.32.x` | Proxy `10.0.32.119:3128`. |
 | **Distancia** | — | Perfil de disco sin ZFS (ext4 íntegro). |
+| **IF04** | `10.0.22.x` | Sin proxy. Perfil ZFS con discos invertidos respecto a CEIABD (ver tabla siguiente); se fija en la ISO al generarla (no se autodetecta, comparte combinación de discos con CEIABD). |
 
 Particionado por perfil (línea Ubuntu; detalle en [`Ubuntu/CLAUDE.md`](Ubuntu/CLAUDE.md)):
 
 | Perfil | Disco pequeño | Disco grande |
 |--------|---------------|--------------|
 | Distancia | NVMe 0.5 TB (EFI+swap+`/` ext4) | NVMe 2.0 TB (`/home` ext4) |
-| CEIABD | NVMe 0.5 TB (EFI+swap+`/` ext4 + `rpool` ZFS) | SDA 1.0 TB (ZFS `tank` → `/datos`) |
+| CEIABD | NVMe 0.5 TB (EFI 1G+swap 16G+`/` 100G ext4 + `rpool` ZFS → `/home`) | SDA 1.0 TB (ZFS `tank` → `/datos`) |
+| IF04 | NVMe 1.0 TB (EFI 1G+swap 64G+`/` 100G ext4 + `tank` ZFS → `/datos`) | SATA SSD 1.0 TB (ZFS `rpool` → `/home`) |
 
 ---
 

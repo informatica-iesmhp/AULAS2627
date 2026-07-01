@@ -45,6 +45,7 @@ Esta carpeta contiene la **configuración automática del equipo ya instalado**,
 - `equiposIABD.ini` — aula IABD, hosts `IABD-00..20` en `10.0.72.12x`.
 - `equiposSMRD.ini` — aula SMRD, hosts `SMRD-00..18` en `10.0.32.12x` (comentarios por equipo: averías conocidas).
 - `EquiposSMRD-alumnos2526.ini` — variante con equipos de alumnos del curso 25/26.
+- `equiposIF04.ini` — aula IF04, hosts `IF04-01..20` (con huecos en `-02`/`-07`/sin `-00` todavía) en `10.0.22.x`, sin proxy de aula. `IF04-17` no tiene IP fija (DHCP) y no aparece en el inventario hasta que tenga `IPf` en `macs.csv`.
 - Todos: `[all:vars]` con `ansible_user=root` y `ansible_python_interpreter=auto_silent` (este último se fijó el 2026-05-15 porque Ubuntu 26.04 «resolute» no trae `python3.12`; ver Registro de cambios).
 
 ## Comandos clave

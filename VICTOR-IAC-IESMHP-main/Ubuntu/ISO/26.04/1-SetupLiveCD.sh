@@ -110,6 +110,15 @@ else
     [ -n "$HORA_HTTP" ] || echoamarillo "Tampoco se pudo sincronizar por HTTP; se continúa con: $(date)"
 fi
 
+# ─────────────── Perfil fijo embebido en la ISO (opcional) ─
+# 0a-CreaISO.sh puede grabar /etc/iac-iesmhp/perfil en el squashfs (5º
+# argumento PERFIL_FIJO). Si existe, se usa más abajo para forzar PERFIL tras
+# la autodetección por hardware — necesario porque algunos perfiles (p.ej.
+# IF04 vs CEIABD) comparten la misma combinación de discos (1 NVMe + 1 SATA/SD)
+# y solo se diferencian por tamaño de NVMe, swap y a qué pool va cada disco.
+PERFIL_FIJO=""
+[ -f /etc/iac-iesmhp/perfil ] && source /etc/iac-iesmhp/perfil
+
 # ─────────────── Detectar discos ───────
 # Ignoramos USB y loop
 DISCOS_M2=($(lsblk -dno NAME,SIZE,TRAN | grep -v loop0 | grep -v 'usb' | grep nvme | sort -h -k2 | awk '{print $1}'))
@@ -147,6 +156,14 @@ else
         echoverde "    /     -> pequeño ($DISK_SMALL)"
         echoverde "    /home -> grande  ($DISK_BIG)"
     fi
+fi
+
+# Si la ISO trae un perfil fijo embebido, prevalece sobre la autodetección
+# por nº/tipo de discos (DISK_SMALL/DISK_BIG ya están asignados arriba y no
+# cambian; solo se sobreescribe el nombre del perfil).
+if [ -n "$PERFIL_FIJO" ] && [ "$PERFIL_FIJO" != "$PERFIL" ]; then
+    echoamarillo "Perfil autodetectado=$PERFIL, pero la ISO trae perfil fijo=$PERFIL_FIJO → se usa $PERFIL_FIJO"
+    PERFIL="$PERFIL_FIJO"
 fi
 
 if [[ "$DISK_SMALL" != *nvme* ]]; then
@@ -187,7 +204,7 @@ if [ "$PERFIL" = "DISTANCIA" ]; then
     parted -s "$DISK_SMALL" mkpart primary  ext4       8705MiB 100%
     # Disco grande: /home (2×NVMe)
     parted -s "$DISK_BIG"   mkpart primary  ext4       1MiB    100%
-else
+elif [ "$PERFIL" = "CEIABD" ]; then
     # CEIABD: layout nuevo con p4 ZFS en el NVMe pequeño y SDA íntegro en ZFS.
     # Códigos de tipo GPT (sgdisk):
     #   EF00 = EFI System Partition
@@ -208,6 +225,20 @@ else
     # SDA íntegro en BF00 → zpool tank con zstd (sin dedup, recordsize=1M)
     sgdisk \
         -n 1:0:0 -t 1:BF00 -c 1:"tank" \
+        "$DISK_BIG"
+else
+    # IF04: mismo esquema ZFS que CEIABD pero con los pools INVERTIDOS entre
+    # discos (rpool/home en el disco grande SATA, tank/datos en la p4 del
+    # NVMe) y swap mayor (64 GiB). Ver Ubuntu/CLAUDE.md para el porqué.
+    sgdisk \
+        -n 1:0:+1G    -t 1:EF00 -c 1:"EFI"   \
+        -n 2:0:+64G   -t 2:8200 -c 2:"swap"  \
+        -n 3:0:+100G  -t 3:8300 -c 3:"root"  \
+        -n 4:0:0      -t 4:BF00 -c 4:"tank"  \
+        "$DISK_SMALL"
+    # Disco grande (SATA) íntegro en BF00 → zpool rpool (dedup+zstd) montado en /home
+    sgdisk \
+        -n 1:0:0 -t 1:BF00 -c 1:"rpool" \
         "$DISK_BIG"
 fi
 
@@ -240,12 +271,20 @@ else
     exit 1
 fi
 
-# En CEIABD necesitamos también la 4ª partición del NVMe pequeño (BF00 → rpool)
+# En CEIABD/IF04 necesitamos también la 4ª partición del NVMe pequeño (BF00)
 # y referencias persistentes (/dev/disk/by-id/...) para que el zpool sobreviva
 # a renombrados de devnode entre arranques (más estable que /dev/nvmeXnYpZ).
-if [ "$PERFIL" = "CEIABD" ]; then
-    ZFS_HOME_PART="${DISK_SMALL}p4"
-    ZFS_DATA_PART="$DATA_PART"     # SDA en CEIABD; la rama nvme no se da aquí
+# La asignación física a cada pool se invierte entre perfiles: en CEIABD
+# rpool/home vive en la p4 del NVMe y tank/datos en el disco grande; en IF04
+# es al revés (ver Ubuntu/CLAUDE.md).
+if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
+    if [ "$PERFIL" = "CEIABD" ]; then
+        ZFS_HOME_PART="${DISK_SMALL}p4"   # rpool/home en el NVMe
+        ZFS_DATA_PART="$DATA_PART"        # tank/datos en el disco grande (SDA)
+    else
+        ZFS_DATA_PART="${DISK_SMALL}p4"   # tank/datos en el NVMe
+        ZFS_HOME_PART="$DATA_PART"        # rpool/home en el disco grande (SATA)
+    fi
 
     # Resolver by-id: recorremos los enlaces que apunten al devnode concreto.
     # Preferimos identificadores estables (ata-*, nvme-MODELO-*) sobre wwn-*
@@ -338,10 +377,10 @@ echoamarillo "--- Espacio disponible en puntos de montaje ---"
 df -h /mnt /mnt/boot/efi 2>/dev/null || df -h /mnt
 echoverde "Sistemas de ficheros montados"
 
-# ─────────────── ZFS (solo CEIABD) ─────
-# Sólo el perfil CEIABD usa ZFS. Distancia mantiene ext4 íntegro.
+# ─────────────── ZFS (CEIABD e IF04) ───
+# Sólo los perfiles CEIABD e IF04 usan ZFS. Distancia mantiene ext4 íntegro.
 # Decisión documentada en Ubuntu/RegistroDeCambios/20260520-Cambios.md.
-if [ "$PERFIL" = "CEIABD" ]; then
+if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     echoamarillo "Instalando zfsutils-linux en el entorno live..."
     # 0b-Github.sh ya enmascaró update-initramfs → la postinst de zfs-* no se
     # cuelga reconstruyendo el initramfs del live. El módulo zfs viene con
@@ -494,7 +533,7 @@ for mnt in "${SQ_MOUNTS[@]}"; do umount "$mnt"; done
 #    los creó (el live). zfs-import-cache compara ese hostid con el de
 #    /etc/hostid del sistema; si difieren, falla "pool last accessed by host..."
 #    Copiar el hostid del live al sistema instalado garantiza que coinciden.
-if [ "$PERFIL" = "CEIABD" ]; then
+if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     mkdir -p /mnt/etc/zfs
     if [ -f /etc/zfs/zpool.cache ]; then
         cp /etc/zfs/zpool.cache /mnt/etc/zfs/zpool.cache
@@ -619,7 +658,7 @@ if [[ "$(tail -n 1 "$DISTROLOGS/$SCRIPT2.log")" == "Correcto" ]]; then
     # Los bind-mounts /dev /proc /sys /run del chroot se desmontan en el shutdown
     # de systemd antes de invocar el export; aquí los desmontamos a mano para
     # que el umount de /mnt/home y /mnt/datos no falle por filesystems busy.
-    if [ "$PERFIL" = "CEIABD" ]; then
+    if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
         echoamarillo "Exportando zpools antes del reboot..."
         # Quitar bind-mounts virtuales del chroot (orden inverso al bind).
         umount -l /mnt/dev/pts 2>/dev/null || true

@@ -57,7 +57,7 @@ if [ -f "$PARTS_FILE_GLOBAL" ]; then
     # shellcheck disable=SC1090
     source "$PARTS_FILE_GLOBAL"
     info "Perfil cargado: PERFIL=${PERFIL:-<no fijado>}"
-    if [ "$PERFIL" = "CEIABD" ]; then
+    if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
         info "  ZFS_POOL_HOME=${ZFS_POOL_HOME:-} HOME=${ZFS_HOME_DATASET:-} → ${ZFS_HOME_PARTID:-}"
         info "  ZFS_POOL_DATA=${ZFS_POOL_DATA:-} DATA=${ZFS_DATA_DATASET:-} → ${ZFS_DATA_PARTID:-}"
     fi
@@ -397,7 +397,7 @@ done
 ok "Internet disponible"
 
 # ─────────────────────────────────────────────────────────────────────────────
-if [ "$PERFIL" = "CEIABD" ]; then
+if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
 paso "Instalar ZFS en el sistema instalado y habilitar servicios"
 # ─────────────────────────────────────────────────────────────────────────────
 # Los pools rpool y tank YA existen y están importados (los creó 1-SetupLiveCD.sh
@@ -556,7 +556,7 @@ paso "Usuarios (root y usuario)"
 # Red de seguridad: si el dataset NO estuviera montado, useradd -m escribiría
 # al ext4 subyacente y el contenido quedaría oculto al arrancar (zfs-mount
 # montaría el dataset encima). Mejor abortar aquí.
-if [ "$PERFIL" = "CEIABD" ] && zpool list rpool >/dev/null 2>&1; then
+if { [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; } && zpool list rpool >/dev/null 2>&1; then
     if ! mountpoint -q /home; then
         err "rpool/home NO está montado en /home — abortando antes de escribir al fs subyacente"
         exit 1
@@ -647,7 +647,7 @@ fi
 # eliminar /home/ubuntu (Live CD) para no arrastrarlo en el snapshot. Ancla de
 # rollback global: zfs rollback rpool/home@inicial devuelve TODO /home (todos
 # los usuarios) al estado post-instalación — usar con cuidado.
-if [ "$PERFIL" = "CEIABD" ] && zfs list -H -o name rpool/home >/dev/null 2>&1; then
+if { [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; } && zfs list -H -o name rpool/home >/dev/null 2>&1; then
     if zfs list -H -t snapshot rpool/home@inicial >/dev/null 2>&1; then
         info "Snapshot rpool/home@inicial ya existe"
     else

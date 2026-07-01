@@ -4,7 +4,14 @@
 #  Genera una ISO de Ubuntu Desktop personalizada con instalación automática UEFI.
 #
 #  Uso:
-#    sudo ./0a-CreaISO.sh <iso_origen> <0b-Github.sh> [iso_salida] [fondo.png]
+#    sudo ./0a-CreaISO.sh <iso_origen> <0b-Github.sh> [iso_salida] [fondo.png] [perfil_fijo]
+#
+#  perfil_fijo (opcional): si se indica (p.ej. "IF04"), se graba en
+#  /etc/iac-iesmhp/perfil dentro del squashfs y 1-SetupLiveCD.sh lo usa para
+#  forzar el PERFIL tras la autodetección por hardware. Necesario cuando dos
+#  perfiles comparten la misma combinación de discos (p.ej. IF04 vs CEIABD:
+#  ambos son 1 NVMe + 1 disco SATA/SD, solo cambia el tamaño del NVMe). Vacío
+#  u omitido = comportamiento de siempre (autodetección).
 #
 #  ARQUITECTURA:
 #    El autoinstall de Ubuntu solo actúa como disparador de arranque:
@@ -20,11 +27,12 @@ set -euo pipefail
 # PARÁMETROS Y VARIABLES
 # ─────────────────────────────────────────────────────────────────────────────
 SOURCE_ISO="${1:?ERROR: Debes indicar la ISO de origen.
-  Uso: $0 <iso_origen> <0b-Github.sh> [iso_salida] [fondo.png]}"
+  Uso: $0 <iso_origen> <0b-Github.sh> [iso_salida] [fondo.png] [perfil_fijo]}"
 PERSO_SCRIPT="${2:?ERROR: Debes indicar el script de personalización (0b-Github.sh).}"
 OUTPUT_ISO="${3:-ubuntu-custom-desktop-uefi.iso}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WALLPAPER_PNG="${4:-${SCRIPT_DIR}/imagenesIES/FondoIES-Ubuntu.png}"
+PERFIL_FIJO="${5:-}"
 
 WORK_DIR="$(mktemp -d /tmp/iso_build_XXXXXX)"
 ISO_DIR="${WORK_DIR}/iso"
@@ -356,6 +364,17 @@ picture-uri-dark='file:///usr/share/backgrounds/iac-iesmhp.png'
 picture-options='zoom'
 DCONFEOF
     log "  Override dconf creado: /etc/dconf/db/local.d/01-wallpaper"
+
+    # ── Perfil fijo de aula (opcional) ─────────────────────────────────────
+    # Si se pasó un 5º argumento, lo grabamos en el squashfs para que
+    # 1-SetupLiveCD.sh fuerce ese PERFIL tras la autodetección por hardware
+    # (ver cabecera del script para el porqué).
+    if [[ -n "$PERFIL_FIJO" ]]; then
+        step "Embebiendo perfil fijo de aula: $PERFIL_FIJO"
+        mkdir -p "${SQUASHFS_DIR}/etc/iac-iesmhp"
+        echo "PERFIL_FIJO=$PERFIL_FIJO" > "${SQUASHFS_DIR}/etc/iac-iesmhp/perfil"
+        log "  /etc/iac-iesmhp/perfil escrito (PERFIL_FIJO=$PERFIL_FIJO)"
+    fi
 
     # Plymouth: logos personalizados en la capa live del squashfs.
     # El Live CD monta todas las capas squashfs en un overlayfs; la capa live es la superior,

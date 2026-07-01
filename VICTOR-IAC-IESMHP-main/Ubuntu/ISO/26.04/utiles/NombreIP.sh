@@ -131,7 +131,14 @@ nmcli c modify "$ncCONEXION" 802-3-ethernet.accept-all-mac-addresses 1
 BNECESARIORESTABLECERRED="N"
 #Compramos si la dirección actual está asociada al aula que corrsponde
 if [[ ("$IP_REDAULA" == "$RED_IABD" && "$AULA" == "IABD") ||
-      ("$IP_REDAULA" == "$RED_SMRD" && "$AULA" == "SMRD") ]]; then
+      ("$IP_REDAULA" == "$RED_SMRD" && "$AULA" == "SMRD") ||
+      ("$IP_REDAULA" == "$RED_IF04" && "$AULA" == "IF04") ]]; then
+    if [ -z "$IPFINALENMACS" ]; then
+        # Equipo sin IPf asignada en macs.csv (p.ej. IF04-17): se deja en DHCP
+        # puro, sin tocar la red. Sin esta guarda, IPESTATICANUEVA quedaría
+        # mal formada (p.ej. "10.0.22./24") y cambiar_ip_estatica fallaría.
+        echo "Equipo $EQUIPOENMACS sin IPf en macs.csv: se deja en DHCP, no se toca la red."
+    else
     IPESTATICANUEVA="$IP_REDAULA.$IPFINALENMACS/24"
     if [ "$IP_METHOD" == "auto" ]; then
         echoverde "La IP actual ($IP_RED) es dinámica, vamos a convertirla en estática (-> $IPESTATICANUEVA)"
@@ -139,7 +146,7 @@ if [[ ("$IP_REDAULA" == "$RED_IABD" && "$AULA" == "IABD") ||
         cambiar_ip_estatica "$ncCONEXION" "$IPESTATICANUEVA" "$IP_GATEWAY" "$IP_DNS1" "$IP_DNS2"
         BNECESARIORESTABLECERRED="S"
     else
-        
+
         if [ "$IP_RED" != "$IPESTATICANUEVA" ]; then
             echo "La IP actual ($IP_IP) no es la correcta ($IPESTATICANUEVA). La cambiamos."
             cambiar_ip_estatica "$ncCONEXION" "$IPESTATICANUEVA" "$IP_GATEWAY" "$IP_DNS1" "$IP_DNS2"
@@ -148,12 +155,13 @@ if [[ ("$IP_REDAULA" == "$RED_IABD" && "$AULA" == "IABD") ||
             echo "La IP actual ($IP_IP) es la correcta ($IPESTATICANUEVA)."
         fi
     fi
+    fi
 else
     if [ "$IP_METHOD" != "auto" ]; then
         echo "La IP actual ($IP_RED) no corresponde al aula $AULA, y tiene una IP estática. Convertimos a dinámica."
         nmcli con modify "$ncCONEXION" ipv4.method auto
         BNECESARIORESTABLECERRED="S"
-    else        
+    else
         echo "La IP actual ($IP_RED) no es de $AULA (pero ya es IP dinámica: nada que hacer)."
     fi
 fi

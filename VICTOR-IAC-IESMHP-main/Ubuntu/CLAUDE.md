@@ -46,6 +46,12 @@ cd ~/xIAC-IESMHP/Ubuntu/ISO/26.04
 git reset --hard origin/main && git pull && chmod +x ./0a-CreaISO.sh
 sudo ./0a-CreaISO.sh ~/Descargas/ubuntu-26.04-desktop-amd64.iso 0b-Github.sh ~/Descargas/mi-ubuntu.iso
 # Argumento 4 opcional: ruta a un PNG personalizado como fondo (por defecto FondoIES-Ubuntu-Gris.png)
+# Argumento 5 opcional: perfil fijo de aula (p.ej. "IF04"). Se graba en
+# /etc/iac-iesmhp/perfil dentro del squashfs y 1-SetupLiveCD.sh lo usa para
+# forzar PERFIL tras la autodetección por hardware. Necesario cuando dos
+# perfiles comparten la misma combinación de discos (ver sección "Configuraciones
+# de hardware soportadas"). Vacío u omitido = autodetección de siempre.
+sudo ./0a-CreaISO.sh ~/Descargas/ubuntu-26.04-desktop-amd64.iso 0b-Github.sh ~/Descargas/if04.iso "" IF04
 ```
 
 ### Ver logs en el equipo instalado
@@ -75,7 +81,9 @@ ls /var/log/IAC-IESMHP/Ubuntu/
   `RAIZSCRIPTS` (`/opt/IAC-IESMHP`), `RAIZDISTRO`, `RAIZANSIBLE`, `RAIZLOG`,
   rutas de los sub-scripts (`SCRIPT_LIVECD`…`SCRIPT_AUTOANSIBLE`), ficheros de
   datos (`FICHERO_MACS`, `URL_MACS`, `FICHERO_AUTORIZADOS`) y redes/proxy de aula
-  (`RED_IABD`/`RED_SMRD`, `PROXY_IABD`/`PROXY_SMRD`).
+  (`RED_IABD`/`RED_SMRD`/`RED_IF04`, `PROXY_IABD`/`PROXY_SMRD`). IF04 no tiene
+  `PROXY_IF04`: el bloque que configuraría el proxy en
+  `3-SetupPrimerInicio.sh` está comentado/inactivo para todas las aulas hoy.
 - Carga: cada script lo localiza relativo a `${BASH_SOURCE[0]}` y hace `source`.
   En `ISO/26.04/` → `_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`; en
   `ISO/26.04/utiles/` → `_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"`;
@@ -102,10 +110,18 @@ ls /var/log/IAC-IESMHP/Ubuntu/
 
 ### 1-SetupLiveCD.sh — Particionado e instalación del FS (v23.x-zfs)
 - **Detección de discos**: ignora USB y loop; usa `lsblk -dno NAME,SIZE,TRAN`.
-  Fija una variable explícita `PERFIL` (`CEIABD` | `DISTANCIA`) que se usa en
-  todos los bloques que se ramifican según hardware.
+  Fija una variable explícita `PERFIL` (`CEIABD` | `DISTANCIA` | `IF04`) que se
+  usa en todos los bloques que se ramifican según hardware.
   - 2×NVMe → `PERFIL=DISTANCIA` (pequeño=`/`, grande=`/home`)
   - NVMe+SD → `PERFIL=CEIABD` (NVMe lleva `/` ext4 + `rpool` ZFS; SD lleva `tank` ZFS)
+  - **Perfil fijo embebido en la ISO**: IF04 tiene la misma combinación de
+    discos que CEIABD (1 NVMe + 1 disco SATA/SD) y no se puede distinguir por
+    hardware, así que su ISO se genera con un 5º argumento en
+    `0a-CreaISO.sh` que graba `/etc/iac-iesmhp/perfil` (`PERFIL_FIJO=IF04`)
+    en el squashfs. `1-SetupLiveCD.sh` carga ese fichero al principio y, tras
+    la autodetección normal, sobreescribe `PERFIL` con el valor fijo si
+    existe. Para las demás aulas (sin ese fichero) el comportamiento es el
+    autodetectado de siempre.
 - **Esquema de particiones**:
   - **DISTANCIA (sin ZFS, intacto respecto a v22.x)**: NVMe pequeño con EFI
     512 MiB + swap 8 GiB + raíz ext4 resto; NVMe grande con una partición
@@ -212,8 +228,12 @@ ls /var/log/IAC-IESMHP/Ubuntu/
 - Termina siempre con `echo "Correcto"` si todo fue bien (1-SetupLiveCD lo comprueba con `tail -n1`).
 
 ### 3-SetupPrimerInicio.sh — Primer arranque
-- Detecta el aula por el tercer octeto de la IP: 72→IABD, 32→SMRV.
-- Configura proxy apt según aula: `10.0.72.140:3128` (IABD) o `10.0.32.119:3128` (SMRV).
+- Detecta el aula por el tercer octeto de la IP: 72→IABD, 32→SMRV, 22→IF04.
+- **Proxy apt por aula: bloque comentado/inactivo** (líneas ~218-245). En su día
+  configuraba `10.0.72.140:3128` (IABD) o `10.0.32.119:3128` (SMRV), pero hoy
+  está deshabilitado y ninguna aula recibe proxy desde aquí (verificado
+  2026-06-30). IF04 tampoco necesita proxy, así que no hace falta reactivarlo
+  para esta aula; si en el futuro se reactiva, añadir la rama `IP3 == "22"`.
 - `export DEBIAN_FRONTEND=noninteractive` + `debconf-set-selections` para gdm3 antes de `dpkg --configure -a`. Evita que el postinst de gdm3 regenere `custom.conf` con auto-login del Live CD.
 - `dpkg --configure -a` y `apt-get full-upgrade` usan `-o Dpkg::Options::="--force-confold"` para no reemplazar `custom.conf` con la versión del paquete.
 - Bloque **post-upgrade**: sobreescribe `/etc/gdm3/custom.conf` con `AutomaticLoginEnable=false` + `InitialSetupEnable=false` + `WaylandEnable=true` tras el upgrade, por si gdm3 lo regeneró.
@@ -252,11 +272,21 @@ Comprueba en 9 secciones: (1) kernel+initramfs+NVMe+casper, (2) grub.cfg con UUI
 | Aula      | Disco pequeño       | Disco grande      |
 |-----------|---------------------|-------------------|
 | Distancia | NVMe 0.5 TB (EFI 512M, swap 8G, `/` ext4 resto) | NVMe 2.0 TB (`/home` ext4) |
-| CEIABD    | NVMe 0.5 TB (EFI 1G, swap 16G, `/` 100G ext4, p4 ZFS → `rpool`) | SDA 1.0 TB (ZFS → `tank` → `/datos`) |
+| CEIABD    | NVMe 0.5 TB (EFI 1G, swap 16G, `/` 100G ext4, p4 ZFS → `rpool` → `/home`) | SDA 1.0 TB (ZFS → `tank` → `/datos`) |
+| IF04      | NVMe 1.0 TB (EFI 1G, swap 64G, `/` 100G ext4, p4 ZFS → `tank` → `/datos`) | SATA SSD 1.0 TB (ZFS → `rpool` → `/home`) |
 
 **Distancia** mantiene ext4 íntegro (sin ZFS). **CEIABD** lleva ZFS en `/home`
-(zpool `rpool` con dedup + zstd) y `/datos` (zpool `tank` con zstd). Detalle
-operativo en la sección "ZFS — operación" más abajo.
+(zpool `rpool` con dedup + zstd) y `/datos` (zpool `tank` con zstd). **IF04**
+usa exactamente las mismas propiedades de pool que CEIABD, pero con los
+discos **invertidos**: `rpool`/`/home` vive en el disco grande (SATA, no
+SD) y `tank`/`/datos` en la p4 del NVMe (que además lleva más swap: 64G en
+vez de 16G). Como IF04 tiene la misma combinación de discos que CEIABD
+(1 NVMe + 1 disco secundario), su perfil se fija en la ISO en vez de
+autodetectarse — ver "Generar la ISO" más arriba y la sección
+"`1-SetupLiveCD.sh`" más abajo. Detalle operativo común en la sección
+"ZFS — operación" más abajo (los nombres de pool y propiedades son
+idénticos para CEIABD e IF04; solo cambia qué disco físico hay detrás de
+cada uno).
 
 ---
 
