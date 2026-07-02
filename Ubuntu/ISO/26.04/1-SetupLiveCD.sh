@@ -390,7 +390,30 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     # 0b-Github.sh ya enmascaró update-initramfs → la postinst de zfs-* no se
     # cuelga reconstruyendo el initramfs del live. El módulo zfs viene con
     # firma Canonical en el kernel del live, no requiere DKMS aquí.
-    DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    # ── Red de seguridad: reloj correcto antes del apt ──────────────────────
+    # apt rechaza los InRelease firmados si el reloj va atrasado ("no válido
+    # todavía... inválido por N min más"). El reloj pudo desfasarse tras una
+    # suspensión o por el RTC de VMware. Reafirmamos la hora aquí (barato) para
+    # que este apt no falle por validación temporal de las firmas de repo.
+    if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" != "yes" ]; then
+        echoamarillo "  Reloj no confirmado por NTP; reafirmando hora por HTTP antes del apt..."
+        for _url in https://www.google.com https://github.com https://www.cloudflare.com; do
+            _fecha="$(curl -sI --max-time 10 "$_url" 2>/dev/null \
+                | grep -i '^[[:space:]]*date:' | head -n1 \
+                | sed -E 's/^[[:space:]]*[Dd]ate:[[:space:]]*//; s/\r$//' || true)"
+            if [ -n "$_fecha" ] && date -s "$_fecha" >/dev/null 2>&1; then
+                hwclock --systohc 2>/dev/null || true
+                echoverde "  Hora reafirmada por HTTP ($_url): $(date)"
+                break
+            fi
+        done
+    fi
+
+    # Si aun así apt rechazara los repos por fecha, -o Acquire::Check-Valid-Until=false
+    # es la última red de seguridad (no ideal, pero evita bloqueo total en aula).
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+        || DEBIAN_FRONTEND=noninteractive apt-get update -qq -o Acquire::Check-Valid-Until=false
     DEBIAN_FRONTEND=noninteractive apt-get install -y zfsutils-linux
     modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')

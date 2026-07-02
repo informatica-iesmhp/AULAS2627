@@ -41,6 +41,21 @@ log "=== 0b-Github.sh iniciado: $(date) ==="
 log "REPO=$REPO  GITREPO=$GITREPO  DESTDIR=$DESTDIR"
 log "Kernel: $(uname -r)  CPU: $(nproc) cores  RAM: $(free -h | awk '/^Mem:/{print $2}')"
 
+# ─────────────── Impedir suspensión durante la instalación ─────
+# Una instalación completa dura varios minutos; si el equipo entra en
+# suspensión por inactividad a mitad, el proceso queda congelado y los discos
+# en estado inconsistente. Neutralizamos los "reflejos" de energía del sistema
+# ANTES de empezar: enmascaramos los targets de suspensión/hibernación y
+# lanzamos un inhibidor activo que bloquea idle/sleep mientras dure el script.
+log "Desactivando suspensión e hibernación durante la instalación..."
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
+# Inhibidor activo por si el escritorio (GNOME) intenta suspender por su cuenta.
+# Corre en segundo plano; se lleva su propio proceso al morir 0b (o al reboot).
+systemd-inhibit --what=idle:sleep:shutdown --who="iac-iesmhp" \
+    --why="Instalacion IAC-IESMHP en curso" --mode=block sleep infinity &>/dev/null &
+INHIBIT_PID=$!
+log "  Inhibidor de suspensión activo (PID $INHIBIT_PID)."
+
 # ─────────────── Red: esperar DHCP ─────
 log "Comprobando conectividad..."
 for i in $(seq 1 12); do
@@ -120,6 +135,27 @@ log "update-initramfs enmascarado (no-op en entorno live)."
 
 log "Desactivamos actualización de man-db"
 rm -f /var/lib/man-db/auto-update
+
+# ─────────────── Liberar el candado de apt/dpkg ───────
+# Al arrancar el live, unattended-upgrades se despierta e instala parches de
+# seguridad en segundo plano, acaparando /var/lib/dpkg/lock-frontend. Si nuestro
+# apt-get llega mientras tanto, falla con "No se pudo bloquear... lock-frontend".
+# Lo detenemos y esperamos a que el candado quede libre antes de tocar apt.
+log "Neutralizando unattended-upgrades (candado de apt)..."
+systemctl stop unattended-upgrades 2>/dev/null || true
+systemctl mask unattended-upgrades 2>/dev/null || true
+pkill -9 unattended-upgr 2>/dev/null || true
+_espera=0
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    if [[ "$_espera" -ge 30 ]]; then
+        warn "Timeout (60s) esperando el candado de apt; se continúa igualmente."
+        break
+    fi
+    warn "Esperando a que apt/dpkg se libere... ($((_espera*2))s)"
+    sleep 2; _espera=$((_espera+1))
+done
+log "Candado de apt libre."
+
 log "Actualizando lista de paquetes..."
 DEBIAN_FRONTEND=noninteractive apt-get update -q
 log "Asegurando que git está instalado..."
