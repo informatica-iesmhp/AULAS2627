@@ -418,7 +418,24 @@ echoverde "Sistemas de ficheros montados"
 # Sólo los perfiles CEIABD e IF04 usan ZFS. Distancia mantiene ext4 íntegro.
 # Decisión documentada en Ubuntu/RegistroDeCambios/20260520-Cambios.md.
 if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
-    echoamarillo "Instalando zfsutils-linux en el entorno live..."
+    # 2026-09-03 (fix #8, solución de raíz): zfsutils-linux se instala ahora
+    # DENTRO de la propia ISO en tiempo de build (ver 0a-CreaISO.sh →
+    # install_paquetes_squashfs(), chroot offline sobre el SquashFS), en vez
+    # de instalarse en caliente en cada arranque real. Así este paso ya NO
+    # depende de la red del aula ni del misterioso paso de "Procesando
+    # disparadores para libc-bin" que se alargaba en equipo real -- se
+    # elimina de raíz el problema documentado en los intentos 1-4 de
+    # Ubuntu/RegistroDeCambios/20260903-Cambios.md (confirmado en DOS
+    # equipos reales distintos el mismo día). Todo el bloque "else" de abajo
+    # (candado dpkg, timeouts, reintentos, needrestart...) se conserva SOLO
+    # como red de seguridad para ISOs generadas ANTES de este fix, que no
+    # traen el paquete preinstalado -- así una ISO antigua sigue
+    # funcionando (más lenta, con los mismos parches de siempre) en vez de
+    # romperse sin más.
+    if command -v zpool >/dev/null 2>&1 && command -v zfs >/dev/null 2>&1; then
+        echoverde "zfsutils-linux ya viene preinstalado en esta ISO -- se omite 'apt-get install' en caliente."
+    else
+    echoamarillo "zfsutils-linux NO viene preinstalado en esta ISO (¿generada antes del 2026-09-03?) -- se instala en caliente, con las redes de seguridad habituales."
     # 0b-Github.sh ya enmascaró update-initramfs → la postinst de zfs-* no se
     # cuelga reconstruyendo el initramfs del live. El módulo zfs viene con
     # firma Canonical en el kernel del live, no requiere DKMS aquí.
@@ -537,7 +554,8 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
         echoamarillo "  Ejecutando 'dpkg --configure -a' para terminar triggers pendientes y reintentando..."
         timeout 120 dpkg --configure -a || true
     done
-    modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
+    fi
+    modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló, o si esta ISO no trae zfsutils-linux preinstalado)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
     echoverde "  ZFS versión: ${ZFS_VER:-desconocida}"
 

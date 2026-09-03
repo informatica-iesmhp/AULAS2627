@@ -38,6 +38,13 @@ WORK_DIR="$(mktemp -d /tmp/iso_build_XXXXXX)"
 ISO_DIR="${WORK_DIR}/iso"
 SQUASHFS_DIR="${WORK_DIR}/squashfs"
 
+# 2026-09-03: rutas bind-mounteadas dentro de SQUASHFS_DIR para el chroot
+# offline de install_paquetes_squashfs() (ver más abajo). El cleanup() de
+# EXIT las desmonta SIEMPRE antes de borrar WORK_DIR, aunque el script
+# aborte a medias por "set -e" -- sin esto, un "rm -rf" sobre un bind-mount
+# de /dev, /proc o /sys todavía montado sería peligroso.
+SQUASHFS_MOUNTS=()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # COLORES Y LIMPIEZA
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +56,14 @@ err()   { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 step()  { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
 cleanup() {
+    local mp
+    for mp in "${SQUASHFS_MOUNTS[@]:-}"; do
+        [[ -n "$mp" ]] || continue
+        if mountpoint -q "$mp" 2>/dev/null; then
+            log "Desmontando ${mp}..."
+            umount -R "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null || warn "  No se pudo desmontar $mp (revísalo a mano si hace falta)"
+        fi
+    done
     log "Limpiando directorio temporal: ${WORK_DIR}"
     rm -rf "${WORK_DIR}"
 }
@@ -103,6 +118,83 @@ extract_iso() {
     xorriso -osirrox on -indev "$SOURCE_ISO" -extract / "${ISO_DIR}" 2>/dev/null || err "xorriso falló al extraer."
     chmod -R u+w "${ISO_DIR}"
     log "Extracción completada"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2a. INSTALAR PAQUETES REALES DENTRO DEL SQUASHFS (chroot offline)
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-09-03: hasta ahora zfsutils-linux se instalaba EN CALIENTE, en cada
+# arranque real, dentro de 1-SetupLiveCD.sh ("apt-get install -y
+# zfsutils-linux"). En equipo real esto ha fallado repetidamente: el paso
+# "Procesando disparadores para libc-bin" tarda mucho más de lo esperado
+# (confirmado en DOS equipos reales distintos el mismo día -- ver
+# Ubuntu/RegistroDeCambios/20260903-Cambios.md, intentos 1-4). Aunque se
+# fueron añadiendo parches (candado dpkg, timeouts, NEEDRESTART_MODE=a,
+# trap de señales, reintentos automáticos...), seguía dependiendo de la red
+# del aula y de un paso cuya duración real en hardware real no se ha podido
+# explicar del todo.
+#
+# Solución de raíz: dejar zfsutils-linux YA INSTALADO dentro del propio
+# SquashFS de la ISO, en un chroot offline en esta máquina de build (con
+# red y tiempo de sobra, sin prisa de aula). Así, en el arranque real,
+# 1-SetupLiveCD.sh ya NO necesita ningún "apt-get install" para ZFS -- solo
+# "modprobe zfs" sobre un módulo/binarios que ya están ahí, eliminando de
+# raíz la dependencia de red y de lo que sea que alargaba el procesado de
+# triggers en equipo real.
+install_paquetes_squashfs() {
+    step "Instalando zfsutils-linux dentro del SquashFS (chroot offline)"
+
+    # ── DNS dentro del chroot ────────────────────────────────────────────
+    # El resolv.conf que trae el squashfs puede ser un symlink al stub de
+    # systemd-resolved (127.0.0.53), que solo funciona con el
+    # systemd-resolved DEL LIVE arrancado -- no sirve aquí, en esta máquina
+    # de build. Se sustituye por una copia plana del resolv.conf real del
+    # host, y se restaura el original al terminar.
+    if [[ -e "${SQUASHFS_DIR}/etc/resolv.conf" || -L "${SQUASHFS_DIR}/etc/resolv.conf" ]]; then
+        mv "${SQUASHFS_DIR}/etc/resolv.conf" "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig"
+    fi
+    cp -L /etc/resolv.conf "${SQUASHFS_DIR}/etc/resolv.conf" \
+        || err "No se pudo copiar /etc/resolv.conf del host al chroot -- ¿hay red en esta máquina?"
+
+    # ── Bind-mounts necesarios para que apt/dpkg funcionen en el chroot ──
+    local fs
+    for fs in dev proc sys; do
+        mount --bind "/$fs" "${SQUASHFS_DIR}/$fs" || err "No se pudo montar --bind /$fs en el chroot."
+        SQUASHFS_MOUNTS+=("${SQUASHFS_DIR}/$fs")
+    done
+
+    log "Actualizando índices apt dentro del chroot..."
+    chroot "${SQUASHFS_DIR}" /usr/bin/env DEBIAN_FRONTEND=noninteractive \
+        apt-get update -qq \
+        || err "apt-get update falló dentro del chroot (revisa la conexión a internet de esta máquina de build)."
+
+    log "Instalando zfsutils-linux dentro del chroot (puede tardar unos minutos, es normal aquí)..."
+    chroot "${SQUASHFS_DIR}" /usr/bin/env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+        apt-get install -y zfsutils-linux \
+        || err "apt-get install zfsutils-linux falló dentro del chroot."
+
+    log "Verificando que las herramientas de ZFS quedaron instaladas en el squashfs..."
+    [[ -x "${SQUASHFS_DIR}/usr/sbin/zpool" ]] && [[ -x "${SQUASHFS_DIR}/usr/sbin/zfs" ]] \
+        || err "zpool/zfs no aparecen en el squashfs tras la instalación -- algo falló."
+    log "  zpool y zfs presentes en ${SQUASHFS_DIR}/usr/sbin/"
+
+    log "Limpiando caché de apt dentro del chroot (para no engordar la ISO)..."
+    chroot "${SQUASHFS_DIR}" apt-get clean || true
+    rm -rf "${SQUASHFS_DIR}"/var/lib/apt/lists/* 2>/dev/null || true
+
+    # ── Desmontar y restaurar resolv.conf, en orden inverso ──────────────
+    local mp
+    for mp in "${SQUASHFS_DIR}/sys" "${SQUASHFS_DIR}/proc" "${SQUASHFS_DIR}/dev"; do
+        umount -R "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null || warn "No se pudo desmontar $mp limpiamente."
+    done
+    SQUASHFS_MOUNTS=()
+
+    rm -f "${SQUASHFS_DIR}/etc/resolv.conf"
+    if [[ -e "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" || -L "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" ]]; then
+        mv "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" "${SQUASHFS_DIR}/etc/resolv.conf"
+    fi
+
+    log "zfsutils-linux instalado en el SquashFS y chroot desmontado correctamente"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +255,8 @@ customize_squashfs() {
 
     log "Desempaquetando SquashFS..."
     unsquashfs -d "${SQUASHFS_DIR}" "${squashfs_path}" || err "Fallo al desempaquetar SquashFS."
+
+    install_paquetes_squashfs
 
     log "Copiando 0b-Github.sh al sistema Live"
     cp "${PERSO_SCRIPT}" "${SQUASHFS_DIR}/0b-Github.sh"
