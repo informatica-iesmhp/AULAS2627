@@ -473,10 +473,17 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     # lo destrababa; ver Ubuntu/RegistroDeCambios/20260903-Cambios.md.)
     export NEEDRESTART_MODE=a
 
+    # 2026-09-03 (fix #5): el timeout de 300s se cumplía incluso con el
+    # candado dpkg libre y sin problemas de red -- el paquete SÍ se instala,
+    # pero el trigger final ("Procesando disparadores para libc-bin") tarda
+    # más de 5 min en equipo real (posible causa: sondeo hotplug de la
+    # tarjeta gráfica i915 robando CPU, ver 20260903-Cambios.md). Se sube a
+    # 900s como red de seguridad para no abortar una instalación que solo
+    # va lenta, no colgada.
     _APT_NET=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
-    timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
-        || timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
-    timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"
+    timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
+        || timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
+    timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"
     modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
     echoverde "  ZFS versión: ${ZFS_VER:-desconocida}"
