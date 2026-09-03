@@ -16,6 +16,13 @@
 # =============================================================================
 set -e
 
+# Ignora SIGTTIN/SIGTTOU (control de terminal): red de seguridad redundante
+# con la de 0b-Github.sh (que ya la fija y se hereda vía exec) para el caso
+# de que este script se relance suelto. Ver esa red de seguridad para el
+# detalle completo del problema (equipo real 2026-09-03, estado T sin
+# culpable identificable — needrestart descartado).
+trap '' TTOU TTIN
+
 VERSIONSCRIPT="23.1-20260612-Ubuntu-zfs"
 
 # Variables comunes del proyecto (REPO, GITREPO, DISTRO, RAIZSCRIPTS, RAIZLOG,

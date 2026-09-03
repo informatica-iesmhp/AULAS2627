@@ -7,6 +7,28 @@
 # =============================================================================
 set -euo pipefail
 
+# ── Red de seguridad: ignorar señales de control de terminal ────────────────
+# Esta cadena se lanza con `sudo` desde iac-iesmhp-run.sh, y Ubuntu trae por
+# defecto `Defaults use_pty` en sudoers: cada `sudo` crea una pty NUEVA y hace
+# de puente con la terminal real. Sumado a las tuberías anidadas de este
+# script y de 1-SetupLiveCD.sh (`exec > >(tee ...)`), varios niveles más abajo
+# un proceso puede quedar en un grupo de proceso que el kernel ya no reconoce
+# como "primer plano" de esa pty. En cuanto ese proceso —sea cual sea; hemos
+# visto que NO es siempre el mismo— intenta leer/escribir la terminal, el
+# kernel lo para con SIGTTIN/SIGTTOU (estado "T" en ps), indistinguible de un
+# cuelgue real: un `kill -CONT` lo revive un instante y se vuelve a parar
+# porque el problema de fondo (no ser el grupo en primer plano) sigue ahí.
+# Ignorar estas señales aquí, en el ANCESTRO más alto de toda la cadena, se
+# hereda a todos los procesos hijos (incluido 1-SetupLiveCD.sh y cuanto este
+# lance vía apt/dpkg) porque SIG_IGN sobrevive a exec(). Con la señal
+# ignorada, una lectura de tty en segundo plano falla con error en vez de
+# congelar el proceso — mucho mejor que un cuelgue silencioso indefinido.
+# (Observado en equipo real 2026-09-03: apt-get install -y zfsutils-linux en
+# estado T tras el ultimo trigger dpkg, sin ningun proceso identificable como
+# culpable — needrestart, whiptail y dialog descartados por ps. Ver
+# Ubuntu/RegistroDeCambios/20260903-Cambios.md.)
+trap '' TTOU TTIN
+
 # ── BLOQUE DE ARRANQUE (única duplicación inevitable del proyecto) ───────────
 # 0b-Github.sh corre en el Live CD ANTES de clonar el repo, así que todavía no
 # puede hacer `source comun.sh` (aún no existe en disco). Estos dos valores son
