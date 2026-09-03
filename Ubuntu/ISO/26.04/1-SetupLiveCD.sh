@@ -412,10 +412,45 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
 
     # Si aun así apt rechazara los repos por fecha, -o Acquire::Check-Valid-Until=false
     # es la última red de seguridad (no ideal, pero evita bloqueo total en aula).
-    DEBIAN_FRONTEND=noninteractive apt-get update -qq \
-        || DEBIAN_FRONTEND=noninteractive apt-get update -qq -o Acquire::Check-Valid-Until=false
-    DEBIAN_FRONTEND=noninteractive apt-get install -y zfsutils-linux
-    modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live"; sleep 10 && exit 1; }
+
+    # ── Red de seguridad: candado de apt/dpkg libre ─────────────────────────
+    # 0b-Github.sh ya neutraliza unattended-upgrades y espera el candado
+    # /var/lib/dpkg/lock-frontend antes de instalar git, PERO solo al
+    # arrancar el live. Si entre ese momento y este paso (tras detectar
+    # discos y particionar, puede tardar) se despierta un temporizador de
+    # fondo (apt-daily.timer, apt-daily-upgrade.timer, packagekitd) y vuelve
+    # a coger el candado, este apt-get se queda esperando en silencio SIN
+    # error y SIN consumir CPU/disco — indistinguible de un cuelgue real.
+    # Repetimos aquí la misma neutralización antes de instalar zfsutils-linux.
+    # (Observado en equipo real 2026-09-02: apt-get install -y zfsutils-linux
+    # colgado >1h, sin proceso visible reteniendo el lock ni error en dmesg.)
+    systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+    systemctl mask unattended-upgrades apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+    pkill -9 -f "unattended-upgr|apt.systemd.daily|packagekitd" 2>/dev/null || true
+    _espera=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+        if [[ "$_espera" -ge 30 ]]; then
+            echoamarillo "  Timeout (60s) esperando el candado de apt; se continúa igualmente."
+            break
+        fi
+        echoamarillo "  Esperando a que apt/dpkg se libere... ($((_espera*2))s)"
+        sleep 2; _espera=$((_espera+1))
+    done
+
+    # ── Red de seguridad: límite de tiempo de red ───────────────────────────
+    # En VMware (entorno de pruebas habitual) la red del NAT es rápida y
+    # estable; en un equipo real conectado al aula puede ser más lenta o
+    # cortarse a medias sin dar error. Sin timeout, apt puede quedarse
+    # reintentando una conexión colgada indefinidamente, en silencio y sin
+    # consumir CPU/disco — el mismo síntoma que el candado de dpkg, pero en
+    # la descarga en vez de en el lock. _APT_NET fija: 3 reintentos, 20 s de
+    # timeout por conexión HTTP/HTTPS; timeout(1) añade un tope duro de 5 min
+    # por si algún reintento interno de apt se sale de esos límites.
+    _APT_NET=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+    timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get update -qq "${_APT_NET[@]}" \
+        || timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
+    timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get install -y zfsutils-linux "${_APT_NET[@]}"
+    modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
     echoverde "  ZFS versión: ${ZFS_VER:-desconocida}"
 
