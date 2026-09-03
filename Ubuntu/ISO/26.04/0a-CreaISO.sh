@@ -227,6 +227,37 @@ install_paquetes_squashfs() {
         SQUASHFS_MOUNTS+=("${overlay_root}/$fs")
     done
 
+    # ── Limpiar fuentes APT del Live CD (cdrom:) ──────────────────────────
+    # Mismo problema y misma solución que ya aplica 2-SetupSOdesdeLiveCD.sh
+    # para el sistema instalado: el Live CD añade una entrada APT que apunta
+    # al ISO montado en /cdrom ('cdrom:[...]' clásico o 'file:/cdrom' DEB822
+    # en Ubuntu 26.04). En el arranque real /cdrom SÍ existe (es el propio
+    # medio de arranque), pero aquí, en este chroot offline de la máquina de
+    # build, no hay ningún /cdrom montado -- "apt-get update" falla con "no
+    # tiene un fichero de Publicación". Se limpia igual que allí, para que
+    # esta fuente tampoco estorbe si en el futuro algo más ejecuta apt en el
+    # live (p.ej. 0b-Github.sh instalando git/openssh al arrancar).
+    _CDROM_URI='(cdrom:|file:/+cdrom)'
+    for _src in "${overlay_root}/etc/apt/sources.list" "${overlay_root}"/etc/apt/sources.list.d/*.list; do
+        [ -f "$_src" ] || continue
+        if grep -qE "^[[:space:]]*deb(-src)?[[:space:]]+(\[[^]]*\][[:space:]]+)?${_CDROM_URI}" "$_src"; then
+            sed -i -E "/^[[:space:]]*deb(-src)?[[:space:]]+(\[[^]]*\][[:space:]]+)?${_CDROM_URI}/d" "$_src"
+            log "  Eliminadas líneas cdrom de ${_src#"${overlay_root}"}"
+        fi
+    done
+    for _src in "${overlay_root}"/etc/apt/sources.list.d/*.sources; do
+        [ -f "$_src" ] || continue
+        _match=0
+        if grep -qE "^URIs:[[:space:]]*${_CDROM_URI}" "$_src" || grep -qE "^URIs:.*[[:space:]]${_CDROM_URI}" "$_src"; then
+            _match=1
+        fi
+        case "$(basename "$_src")" in *cdrom*) _match=1 ;; esac
+        if [ "$_match" -eq 1 ]; then
+            rm -f "$_src"
+            log "  Eliminado fichero DEB822 con cdrom: ${_src#"${overlay_root}"}"
+        fi
+    done
+
     log "Actualizando índices apt dentro del chroot..."
     chroot "${overlay_root}" /usr/bin/env DEBIAN_FRONTEND=noninteractive \
         apt-get update -qq \
