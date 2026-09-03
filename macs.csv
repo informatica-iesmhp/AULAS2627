@@ -60,6 +60,7 @@ bc:fc:e7:05:73:d5, SMRD-18, 138, equipo alumno+VICTOR
 #,#,#, AULA IF04 (red 10.0.22.x, sin proxy)                          ########################
 30:9C:23:40:39:C7, IF04-00, 100, equipo profesor
 7C:10:C9:84:C6:75, IF04-01, 101, equipo alumno
+7C:10:C9:83:A5:A4, IF04-02, 102, equipo alumno
 7C:10:C9:83:A5:A7, IF04-03, 103, equipo alumno
 7C:10:C9:83:A5:8B, IF04-04, 104, equipo alumno
 7C:10:C9:84:C2:0A, IF04-05, 105, equipo alumno
