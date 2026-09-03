@@ -183,6 +183,31 @@ if [[ "$DISK_SMALL" != *nvme* ]]; then
     exit 1
 fi
 
+# ─────────────── Limpieza idempotente de intentos anteriores ──────────
+# 2026-09-03 (fix #6): si una ejecución previa de este script se abortó a
+# media instalación (p.ej. por el timeout de apt más abajo, o por un corte
+# de corriente), puede dejar las particiones montadas bajo /mnt y/o pools
+# ZFS importados. Sin esto, los pasos de más abajo (sgdisk/mkfs.fat/zpool
+# create) fallan en el siguiente intento con errores tipo "contains a
+# mounted filesystem" o "pool already exists" -- y hasta ahora había que
+# desmontar/exportar a mano por SSH antes de poder relanzar (visto en
+# equipo real 2026-09-03, ver Ubuntu/RegistroDeCambios/20260903-Cambios.md).
+# Se ejecuta siempre, sea o no un reintento (todo son no-ops seguros con
+# "|| true" si no hay nada que limpiar), para que el script sea repetible
+# sin intervención manual.
+echo && echoamarillo "Comprobando y limpiando restos de intentos anteriores..."
+swapoff -a 2>/dev/null || true
+for mp in /mnt/boot/efi /mnt/home /mnt/datos /mnt; do
+    umount -R "$mp" 2>/dev/null || true
+done
+if command -v zpool >/dev/null 2>&1; then
+    for p in $(zpool list -H -o name 2>/dev/null); do
+        echoamarillo "  Exportando pool ZFS residual: $p"
+        zpool export -f "$p" 2>/dev/null || true
+    done
+fi
+echoverde "Limpieza inicial completada"
+
 # ─────────────── Limpiar LVM si existe ─
 if lsblk -o NAME,TYPE | grep -q "lvm"; then
     echoamarillo "Detectadas particiones LVM. Eliminando..."
@@ -483,7 +508,25 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     _APT_NET=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
     timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
         || timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
-    timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"
+
+    # 2026-09-03 (fix #6): autorrecuperación si "apt-get install" supera el
+    # timeout. Comprobado en equipo real: cuando esto ocurría, el paquete YA
+    # se había desempaquetado y "dpkg --configure -a" terminaba solo en
+    # segundos con la CPU libre -- es decir, no era un cuelgue real sino el
+    # paso de procesar triggers (p.ej. libc-bin) tardando más de lo previsto
+    # en ese equipo concreto. Antes había que entrar por SSH y ejecutarlo a
+    # mano; ahora el propio script lo hace y reintenta, hasta 3 veces, antes
+    # de rendirse.
+    _intentos=0
+    until timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"; do
+        _intentos=$((_intentos+1))
+        if [[ "$_intentos" -ge 3 ]]; then
+            echorojo "Error: apt-get install zfsutils-linux sigue fallando tras $_intentos intentos (con dpkg --configure -a de por medio). Revisa conectividad de red o el hardware de este equipo."
+            sleep 10 && exit 1
+        fi
+        echoamarillo "  apt-get install superó el timeout (intento $_intentos/3). Ejecutando 'dpkg --configure -a' para terminar triggers pendientes y reintentando..."
+        timeout 300 dpkg --configure -a || true
+    done
     modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
     echoverde "  ZFS versión: ${ZFS_VER:-desconocida}"
