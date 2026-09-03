@@ -446,10 +446,30 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     # la descarga en vez de en el lock. _APT_NET fija: 3 reintentos, 20 s de
     # timeout por conexión HTTP/HTTPS; timeout(1) añade un tope duro de 5 min
     # por si algún reintento interno de apt se sale de esos límites.
+    # ── Red de seguridad: needrestart en modo automático ────────────────────
+    # needrestart (hook de apt/dpkg vía /etc/apt/apt.conf.d/99needrestart) NO
+    # usa debconf, así que DEBIAN_FRONTEND=noninteractive no lo silencia: si
+    # detecta que un proceso YA en marcha usa una librería que se acaba de
+    # actualizar (aquí, libc-bin — zfs-zed instala un servicio nuevo), abre
+    # un dialogo interactivo que intenta leer /dev/tty directamente. Como el
+    # apt-get corre en el mismo grupo de proceso que la terminal pero no es
+    # su primer plano, la lectura dispara SIGTTIN/SIGTTOU y congela TODO el
+    # grupo (apt-get incluido) en estado T (parado), indistinguible de un
+    # cuelgue — un kill -CONT lo revive un instante y lo vuelve a parar en
+    # cuanto needrestart reintenta leer. Es dependiente del estado exacto del
+    # live en ese instante (qué procesos de hardware real —p.ej. thermald—
+    # tenían la libreria vieja cargada), por eso no pasaba en VMware ni en
+    # otro equipo. 3-SetupPrimerInicio.sh YA exporta NEEDRESTART_MODE=a antes
+    # de Ansible; aquí faltaba la misma protección.
+    # (Observado en equipo real 2026-09-03: apt-get install -y zfsutils-linux
+    # en estado T tras "Procesando disparadores para libc-bin"; kill -CONT no
+    # lo destrababa; ver Ubuntu/RegistroDeCambios/20260903-Cambios.md.)
+    export NEEDRESTART_MODE=a
+
     _APT_NET=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
-    timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get update -qq "${_APT_NET[@]}" \
-        || timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
-    timeout 300 env DEBIAN_FRONTEND=noninteractive apt-get install -y zfsutils-linux "${_APT_NET[@]}"
+    timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
+        || timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
+    timeout 300 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"
     modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
     echoverde "  ZFS versión: ${ZFS_VER:-desconocida}"
