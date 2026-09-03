@@ -56,8 +56,14 @@ err()   { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 step()  { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 
 cleanup() {
-    local mp
-    for mp in "${SQUASHFS_MOUNTS[@]:-}"; do
+    # Desmontar en orden INVERSO al montado (LIFO): imprescindible porque
+    # el overlay de install_paquetes_squashfs() depende de que sus capas
+    # (montadas antes) sigan montadas mientras él lo está -- desmontar en
+    # el orden "natural" (el que se montó primero, primero) fallaría con
+    # "target is busy" en cuanto hay mounts anidados/dependientes.
+    local i mp
+    for ((i=${#SQUASHFS_MOUNTS[@]}-1; i>=0; i--)); do
+        mp="${SQUASHFS_MOUNTS[$i]}"
         [[ -n "$mp" ]] || continue
         if mountpoint -q "$mp" 2>/dev/null; then
             log "Desmontando ${mp}..."
@@ -142,59 +148,136 @@ extract_iso() {
 # raíz la dependencia de red y de lo que sea que alargaba el procesado de
 # triggers en equipo real.
 install_paquetes_squashfs() {
-    step "Instalando zfsutils-linux dentro del SquashFS (chroot offline)"
+    # $1 = ruta del .squashfs "live" que ya se desempaquetó en SQUASHFS_DIR
+    #      (para no volver a montarlo también como capa de solo lectura).
+    local live_squashfs_path="$1"
+    step "Instalando zfsutils-linux dentro del SquashFS (overlay offline, todas las capas)"
+
+    # 2026-09-03: la capa "live" (la única que se desempaqueta en
+    # SQUASHFS_DIR) NO es un sistema completo por sí sola -- en Ubuntu
+    # multi-capa (24.04+) es solo un AÑADIDO sobre minimal.squashfs
+    # (base) y minimal.standard.squashfs (estándar); apt/dpkg/glibc y el
+    # resto de herramientas básicas viven en esas otras capas. Comprobado
+    # en la práctica: unsquashfs de la capa live sola solo trae ~2000
+    # ficheros, insuficiente para un chroot funcional con apt.
+    #
+    # Solución: montar TODAS las capas .squashfs de la ISO con overlayfs
+    # (solo lectura) + un "upperdir" vacío encima, igual que hace casper
+    # en el arranque real. El chroot ve así el sistema COMPLETO. Como el
+    # upperdir es lo único donde overlayfs escribe, al terminar solo
+    # copiamos ESE contenido (lo que apt/dpkg cambiaron de verdad) dentro
+    # de SQUASHFS_DIR -- así el squashfs "live" final crece solo lo justo
+    # (el paquete nuevo), no se duplica toda la base ahí dentro.
+    local all_layers=()
+    mapfile -t all_layers < <(find "${ISO_DIR}" -type f -name "*.squashfs" | sort -r)
+
+    local overlay_root="${WORK_DIR}/overlay_root"
+    local overlay_upper="${WORK_DIR}/overlay_upper"
+    local overlay_work="${WORK_DIR}/overlay_work"
+    mkdir -p "$overlay_root" "$overlay_upper" "$overlay_work"
 
     # ── DNS dentro del chroot ────────────────────────────────────────────
     # El resolv.conf que trae el squashfs puede ser un symlink al stub de
     # systemd-resolved (127.0.0.53), que solo funciona con el
     # systemd-resolved DEL LIVE arrancado -- no sirve aquí, en esta máquina
     # de build. Se sustituye por una copia plana del resolv.conf real del
-    # host, y se restaura el original al terminar.
+    # host DIRECTAMENTE en SQUASHFS_DIR (fuera del overlay, como fichero
+    # normal) y se restaura el original al terminar, también fuera del
+    # overlay. IMPORTANTE: se hace así (no borrándolo/escribiéndolo A
+    # TRAVÉS del punto de montaje del overlay) porque un "rm" sobre un
+    # fichero que existe en una capa inferior, hecho DESDE el overlay,
+    # crea un "whiteout" en el upperdir -- si ese whiteout se fusionase
+    # luego con la capa live, taparía el resolv.conf real de la ISO en el
+    # arranque de verdad. Manipulando SQUASHFS_DIR como carpeta normal
+    # (antes de montarla como lowerdir, y después de desmontar el overlay)
+    # se evita ese riesgo por completo.
     if [[ -e "${SQUASHFS_DIR}/etc/resolv.conf" || -L "${SQUASHFS_DIR}/etc/resolv.conf" ]]; then
         mv "${SQUASHFS_DIR}/etc/resolv.conf" "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig"
     fi
     cp -L /etc/resolv.conf "${SQUASHFS_DIR}/etc/resolv.conf" \
-        || err "No se pudo copiar /etc/resolv.conf del host al chroot -- ¿hay red en esta máquina?"
+        || err "No se pudo copiar /etc/resolv.conf del host a la capa live -- ¿hay red en esta máquina?"
+
+    # lowerdir: el PRIMERO listado tiene más prioridad. SQUASHFS_DIR (la
+    # capa live ya desempaquetada, con el resolv.conf recién sustituido) va
+    # primera; el resto de capas (base, estándar, idiomas...) se montan de
+    # solo lectura detrás, en orden inverso al alfabético para que "más
+    # específica" gane sobre "más genérica" en caso de solape (no debería
+    # haberlo, son aditivas).
+    local lowerdir="${SQUASHFS_DIR}"
+    local layer tmp_mp
+    for layer in "${all_layers[@]}"; do
+        [[ "$layer" == "$live_squashfs_path" ]] && continue
+        tmp_mp="${WORK_DIR}/layer_$(basename "$layer" .squashfs)"
+        mkdir -p "$tmp_mp"
+        mount -t squashfs -o loop,ro "$layer" "$tmp_mp" || err "No se pudo montar la capa $layer"
+        SQUASHFS_MOUNTS+=("$tmp_mp")
+        lowerdir="${lowerdir}:${tmp_mp}"
+    done
+    log "Capas combinadas para el overlay: $(echo "$lowerdir" | tr ':' '\n' | wc -l)"
+
+    mount -t overlay overlay -o "lowerdir=${lowerdir},upperdir=${overlay_upper},workdir=${overlay_work}" "$overlay_root" \
+        || err "No se pudo montar el overlay combinando las capas del SquashFS."
+    SQUASHFS_MOUNTS+=("$overlay_root")
 
     # ── Bind-mounts necesarios para que apt/dpkg funcionen en el chroot ──
     local fs
     for fs in dev proc sys; do
-        mount --bind "/$fs" "${SQUASHFS_DIR}/$fs" || err "No se pudo montar --bind /$fs en el chroot."
-        SQUASHFS_MOUNTS+=("${SQUASHFS_DIR}/$fs")
+        mkdir -p "${overlay_root}/$fs"
+        mount --bind "/$fs" "${overlay_root}/$fs" || err "No se pudo montar --bind /$fs en el chroot."
+        SQUASHFS_MOUNTS+=("${overlay_root}/$fs")
     done
 
     log "Actualizando índices apt dentro del chroot..."
-    chroot "${SQUASHFS_DIR}" /usr/bin/env DEBIAN_FRONTEND=noninteractive \
+    chroot "${overlay_root}" /usr/bin/env DEBIAN_FRONTEND=noninteractive \
         apt-get update -qq \
         || err "apt-get update falló dentro del chroot (revisa la conexión a internet de esta máquina de build)."
 
     log "Instalando zfsutils-linux dentro del chroot (puede tardar unos minutos, es normal aquí)..."
-    chroot "${SQUASHFS_DIR}" /usr/bin/env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+    chroot "${overlay_root}" /usr/bin/env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
         apt-get install -y zfsutils-linux \
         || err "apt-get install zfsutils-linux falló dentro del chroot."
 
-    log "Verificando que las herramientas de ZFS quedaron instaladas en el squashfs..."
-    [[ -x "${SQUASHFS_DIR}/usr/sbin/zpool" ]] && [[ -x "${SQUASHFS_DIR}/usr/sbin/zfs" ]] \
-        || err "zpool/zfs no aparecen en el squashfs tras la instalación -- algo falló."
-    log "  zpool y zfs presentes en ${SQUASHFS_DIR}/usr/sbin/"
+    log "Verificando que las herramientas de ZFS quedaron instaladas..."
+    [[ -x "${overlay_root}/usr/sbin/zpool" ]] && [[ -x "${overlay_root}/usr/sbin/zfs" ]] \
+        || err "zpool/zfs no aparecen en el chroot tras la instalación -- algo falló."
+    log "  zpool y zfs presentes en ${overlay_root}/usr/sbin/"
 
     log "Limpiando caché de apt dentro del chroot (para no engordar la ISO)..."
-    chroot "${SQUASHFS_DIR}" apt-get clean || true
-    rm -rf "${SQUASHFS_DIR}"/var/lib/apt/lists/* 2>/dev/null || true
+    chroot "${overlay_root}" apt-get clean || true
+    rm -rf "${overlay_root}"/var/lib/apt/lists/* 2>/dev/null || true
 
-    # ── Desmontar y restaurar resolv.conf, en orden inverso ──────────────
-    local mp
-    for mp in "${SQUASHFS_DIR}/sys" "${SQUASHFS_DIR}/proc" "${SQUASHFS_DIR}/dev"; do
-        umount -R "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null || warn "No se pudo desmontar $mp limpiamente."
+    # ── Desmontar bind-mounts y overlay ANTES de leer el upperdir ────────
+    # (mientras el overlay sigue montado, overlay_upper puede no reflejar
+    # todavía en disco todo lo que el kernel tiene en caché; desmontar
+    # fuerza el sync y además evita copiar /dev,/proc,/sys por error).
+    for fs in sys proc dev; do
+        umount -R "${overlay_root}/$fs" 2>/dev/null || umount -l "${overlay_root}/$fs" 2>/dev/null || warn "No se pudo desmontar ${overlay_root}/$fs limpiamente."
+    done
+    umount -R "$overlay_root" 2>/dev/null || umount -l "$overlay_root" 2>/dev/null || err "No se pudo desmontar el overlay -- revisa a mano antes de continuar."
+    for layer in "${all_layers[@]}"; do
+        [[ "$layer" == "$live_squashfs_path" ]] && continue
+        tmp_mp="${WORK_DIR}/layer_$(basename "$layer" .squashfs)"
+        umount "$tmp_mp" 2>/dev/null || umount -l "$tmp_mp" 2>/dev/null || warn "No se pudo desmontar $tmp_mp limpiamente."
     done
     SQUASHFS_MOUNTS=()
 
+    # ── Fusionar SOLO lo que cambió (el contenido de upperdir) en SQUASHFS_DIR ──
+    # Esto es justo lo que apt/dpkg añadieron o modificaron de verdad
+    # (los ficheros del paquete zfsutils-linux + sus dependencias, y la
+    # base de datos de dpkg actualizada) -- no toda la base del sistema.
+    log "Fusionando los cambios (upperdir) dentro de la capa live..."
+    cp -a "${overlay_upper}/." "${SQUASHFS_DIR}/" \
+        || err "No se pudo fusionar el upperdir del overlay con la capa live."
+
+    # ── Restaurar el resolv.conf original de la capa live (ver arriba) ───
+    # Ya fuera del overlay (desmontado), manipular SQUASHFS_DIR es un
+    # simple fichero normal -- sin riesgo de whiteouts.
     rm -f "${SQUASHFS_DIR}/etc/resolv.conf"
     if [[ -e "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" || -L "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" ]]; then
         mv "${SQUASHFS_DIR}/etc/resolv.conf.iac-orig" "${SQUASHFS_DIR}/etc/resolv.conf"
     fi
 
-    log "zfsutils-linux instalado en el SquashFS y chroot desmontado correctamente"
+    log "zfsutils-linux instalado en el SquashFS live y overlay desmontado correctamente"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -256,7 +339,7 @@ customize_squashfs() {
     log "Desempaquetando SquashFS..."
     unsquashfs -d "${SQUASHFS_DIR}" "${squashfs_path}" || err "Fallo al desempaquetar SquashFS."
 
-    install_paquetes_squashfs
+    install_paquetes_squashfs "${squashfs_path}"
 
     log "Copiando 0b-Github.sh al sistema Live"
     cp "${PERSO_SCRIPT}" "${SQUASHFS_DIR}/0b-Github.sh"
