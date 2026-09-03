@@ -498,34 +498,44 @@ if [ "$PERFIL" = "CEIABD" ] || [ "$PERFIL" = "IF04" ]; then
     # lo destrababa; ver Ubuntu/RegistroDeCambios/20260903-Cambios.md.)
     export NEEDRESTART_MODE=a
 
-    # 2026-09-03 (fix #5): el timeout de 300s se cumplía incluso con el
-    # candado dpkg libre y sin problemas de red -- el paquete SÍ se instala,
-    # pero el trigger final ("Procesando disparadores para libc-bin") tarda
-    # más de 5 min en equipo real (posible causa: sondeo hotplug de la
-    # tarjeta gráfica i915 robando CPU, ver 20260903-Cambios.md). Se sube a
-    # 900s como red de seguridad para no abortar una instalación que solo
-    # va lenta, no colgada.
+    # 2026-09-03 (fix #5, ajustado en fix #7): el timeout de 300s se cumplía
+    # incluso con el candado dpkg libre y sin problemas de red -- el paquete
+    # SÍ se instala, pero el trigger final ("Procesando disparadores para
+    # libc-bin") parecía tardar más de 5 min en equipo real. Confirmado en
+    # DOS equipos reales distintos, así que ya no se trata como una rareza
+    # de hardware concreto. Ver Ubuntu/RegistroDeCambios/20260903-Cambios.md.
     _APT_NET=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
-    timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
-        || timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
+    timeout 180 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq "${_APT_NET[@]}" \
+        || timeout 180 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq -o Acquire::Check-Valid-Until=false "${_APT_NET[@]}"
 
-    # 2026-09-03 (fix #6): autorrecuperación si "apt-get install" supera el
-    # timeout. Comprobado en equipo real: cuando esto ocurría, el paquete YA
-    # se había desempaquetado y "dpkg --configure -a" terminaba solo en
-    # segundos con la CPU libre -- es decir, no era un cuelgue real sino el
-    # paso de procesar triggers (p.ej. libc-bin) tardando más de lo previsto
-    # en ese equipo concreto. Antes había que entrar por SSH y ejecutarlo a
-    # mano; ahora el propio script lo hace y reintenta, hasta 3 veces, antes
-    # de rendirse.
+    # 2026-09-03 (fix #6, acelerado en fix #7): autorrecuperación si
+    # "apt-get install" supera el timeout. Comprobado en equipo real: cuando
+    # esto ocurría, el paquete YA se había desempaquetado y "dpkg --configure
+    # -a" terminaba solo en segundos con la CPU libre -- es decir, no hacía
+    # falta esperar 15 min por intento para que la recuperación funcionase.
+    # Fix #7: se baja el timeout por intento de 900s a 150s (2,5 min) y se
+    # sube el número de reintentos de 3 a 5, para que la espera máxima total
+    # sea similar (12,5 min) pero detectando y recuperándose mucho antes en
+    # el caso normal, en vez de agotar siempre los 15 min completos. Antes de
+    # cada reintento se vuelca automáticamente al log un pequeño diagnóstico
+    # (procesos, CPU, dmesg) para poder investigar la causa raíz más adelante
+    # sin tener que reproducir el problema a propósito ni pedirle a nadie que
+    # lo capture a mano.
     _intentos=0
-    until timeout 900 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"; do
+    until timeout 150 env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y zfsutils-linux "${_APT_NET[@]}"; do
         _intentos=$((_intentos+1))
-        if [[ "$_intentos" -ge 3 ]]; then
+        if [[ "$_intentos" -ge 5 ]]; then
             echorojo "Error: apt-get install zfsutils-linux sigue fallando tras $_intentos intentos (con dpkg --configure -a de por medio). Revisa conectividad de red o el hardware de este equipo."
             sleep 10 && exit 1
         fi
-        echoamarillo "  apt-get install superó el timeout (intento $_intentos/3). Ejecutando 'dpkg --configure -a' para terminar triggers pendientes y reintentando..."
-        timeout 300 dpkg --configure -a || true
+        echoamarillo "  apt-get install superó el timeout (intento $_intentos/5). Diagnóstico antes de reintentar:"
+        { echo "  --- ps aux (estados no-S/R) ---"; ps aux | awk 'NR==1 || $8 !~ /^[SR]/'; \
+          echo "  --- top (snapshot) ---"; top -bn1 | head -15; \
+          echo "  --- free -h ---"; free -h; \
+          echo "  --- dmesg (últimas 20 líneas) ---"; dmesg -T 2>/dev/null | tail -20; \
+        } 2>&1 | sed 's/^/    /' || true
+        echoamarillo "  Ejecutando 'dpkg --configure -a' para terminar triggers pendientes y reintentando..."
+        timeout 120 dpkg --configure -a || true
     done
     modprobe zfs || { echorojo "Error: no se pudo cargar el módulo ZFS en el live (revisa conectividad de red si apt-get tardó/falló)"; sleep 10 && exit 1; }
     ZFS_VER=$(zfs version 2>/dev/null | head -1 | awk '{print $NF}' | sed -e 's/^zfs-//' -e 's/-.*//')
