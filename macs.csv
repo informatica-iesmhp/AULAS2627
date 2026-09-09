@@ -51,10 +51,8 @@ bc:fc:e7:05:73:d0, SMRD-17, 137, equipo alumno+ANGELICA
 bc:fc:e7:05:73:d5, SMRD-18, 138, equipo alumno+VICTOR
 #,#,#, ######################################################################################
 
-
 #MÁQUINAS W11
 00:0C:29:8A:AD:7B,  VM-W11-00, 190, Máquina virtual Windows 11 de pruebas
-
 
 #,#,#, ######################################################################################
 #,#,#, AULA IF04 (red 10.0.22.x, sin proxy)                          ########################
@@ -78,4 +76,39 @@ bc:fc:e7:05:73:d5, SMRD-18, 138, equipo alumno+VICTOR
 7C:10:C9:84:C2:12, IF04-18, 118, equipo alumno
 7C:10:C9:83:A5:AF, IF04-19, 119, equipo alumno
 7C:10:C9:84:CC:26, IF04-20, 120, equipo alumno
+#,#,#, ######################################################################################
+
+#,#,#, ######################################################################################
+#,#,#, AULA IF03                                                      ########################
+                 , IF03-00, 100, equipo profesor
+30:9C:23:47:B4:03, IF03-01, 101, equipo alumno
+4C:CC:6A:42:F8:60, IF03-02, 102, equipo alumno
+4C:CC:6A:42:F6:A3, IF03-03, 103, equipo alumno
+E8:9C:25:38:E4:73, IF03-04, 104, equipo alumno
+30:9C:23:40:3C:1F, IF03-05, 105, equipo alumno
+30:9C:23:40:3C:22, IF03-06, 106, equipo alumno
+4C:CC:6A:42:F6:71, IF03-07, 107, equipo alumno
+E0:D5:5E:AF:FE:83, IF03-08, 108, equipo alumno
+30:9C:23:40:3C:3C, IF03-09, 109, equipo alumno
+E0:D5:5E:E1:86:9E, IF03-10, 110, equipo alumno
+4C:CC:6A:42:F8:41, IF03-11, 111, equipo alumno
+30:9C:23:40:3C:24, IF03-12, 112, equipo alumno
+4C:CC:6A:42:F6:7A, IF03-13, 113, equipo alumno
+4C:CC:6A:42:F8:02, IF03-14, 114, equipo alumno
+30:9C:23:40:3C:17, IF03-15, 115, equipo alumno
+B4:2E:99:15:B8:35, IF03-16, 116, equipo alumno
+4C:CC:6A:42:F8:08, IF03-17, 117, equipo alumno
+30:9C:23:40:3C:16, IF03-18, 118, equipo alumno
+30:9C:23:40:3C:25, IF03-19, 119, equipo alumno
+                 , IF03-20, 120, equipo alumno
+30:9C:23:40:3C:05, IF03-21, 121, equipo alumno
+CC:28:AA:35:0B:21, IF03-22, 122, equipo alumno
+4C:CC:6A:42:F8:0F, IF03-23, 123, equipo alumno
+4C:CC:6A:42:F6:92, IF03-24, 124, equipo alumno
+30:9C:23:40:3C:2A, IF03-25, 125, equipo alumno
+4C:CC:6A:42:F8:12, IF03-26, 126, equipo alumno
+4C:CC:6A:42:F8:1A, IF03-27, 127, equipo alumno
+4C:CC:6A:42:F8:0C, IF03-28, 128, equipo alumno
+30:9C:23:40:3C:30, IF03-29, 129, equipo alumno
+4C:CC:6A:42:F6:77, IF03-30, 130, equipo alumno
 #,#,#, ######################################################################################
