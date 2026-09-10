@@ -1,0 +1,77 @@
+---
+# 01_bootstrap_keys.yml
+# ---------------------------------------------------------------------------
+# PASO 1 de 2. Se ejecuta UNA VEZ, justo después de clonar/desplegar los
+# equipos, usando todavía la contraseña temporal de ansible-admin.
+# Copia la clave pública de ansible-admin (generada en el PC del profesor)
+# a cada cliente. NO toca la configuración de contraseña todavía: eso es
+# el paso 2, y solo debe lanzarse después de confirmar que la clave
+# funciona (ver instrucciones de uso más abajo).
+#
+# Uso (como ansible-admin, desde ~/ansible-aulas, con el inventario de esa aula):
+#
+#   ansible-playbook -i inventarios/aula1.ini playbooks/01_bootstrap_keys.yml \
+#       --ask-pass -u ansible-admin \
+#       -e pubkey_path=~/.ssh/ansible-admin_ed25519.pub \
+#       --ssh-common-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+#
+# --ask-pass te pedirá la contraseña temporal de ansible-admin una vez
+# (se usará para conectarse a todos los equipos del inventario).
+# ---------------------------------------------------------------------------
+
+- name: Desplegar clave pública de ansible-admin
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_admin_user: ansible-admin
+    # Ruta a la clave PÚBLICA generada por instalar_ansible_profesor.sh en
+    # el PC del profesor (dentro del $HOME de ansible-admin). Normalmente
+    # se sobreescribe en la línea de comandos con -e pubkey_path=...
+    pubkey_path: "{{ lookup('env', 'HOME') }}/.ssh/ansible-admin_ed25519.pub"
+
+  tasks:
+    - name: Comprobar que la clave pública existe en el PC del profesor
+      ansible.builtin.stat:
+        path: "{{ pubkey_path }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: pubkey_stat
+
+    - name: Fallar si no se encuentra la clave pública
+      ansible.builtin.assert:
+        that: pubkey_stat.stat.exists
+        fail_msg: >-
+          No se encuentra {{ pubkey_path }}. Genera antes el par de claves con:
+          ssh-keygen -t ed25519 -C "ansible-admin@aula" -f ~/.ssh/ansible-admin_ed25519
+
+    - name: Asegurar directorio .ssh de ansible-admin
+      ansible.builtin.file:
+        path: "/home/{{ ansible_admin_user }}/.ssh"
+        state: directory
+        owner: "{{ ansible_admin_user }}"
+        group: "{{ ansible_admin_user }}"
+        mode: "0700"
+
+    - name: Copiar clave pública a authorized_keys
+      ansible.posix.authorized_key:
+        user: "{{ ansible_admin_user }}"
+        state: present
+        key: "{{ lookup('file', pubkey_path) }}"
+
+- name: Aviso final
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Recordatorio
+      ansible.builtin.debug:
+        msg: >-
+          Clave copiada. AHORA verifica que funciona SIN contraseña con:
+          ansible all -i inventarios/aula1.ini -m ping -u ansible-admin
+          --ssh-common-args='-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new'
+          Si todos responden "pong", ejecuta playbooks/02_harden_ssh.yml
+          para desactivar la contraseña. Si NO responden, no sigas: revisa
+          qué equipos han fallado antes de continuar.
