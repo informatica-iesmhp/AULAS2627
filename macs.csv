@@ -105,3 +105,32 @@ CC:28:AA:35:0B:21, IF03-22, 122, equipo alumno
 30:9C:23:40:3C:30, IF03-29, 129, equipo alumno
 4C:CC:6A:42:F6:77, IF03-30, 130, equipo alumno
 #,#,#, ######################################################################################
+#,#,#, ######################################################################################
+#,#,#, AULA IF01                                                      ########################
+30:9C:23:27:86:95, IF01-00, 100, equipo profesor
+00:E0:4C:68:90:C0, IF01-01, 101, equipo alumno
+30:9C:23:40:39:C1, IF01-02, 102, equipo alumno
+30:9C:23:40:39:E4, IF01-03, 103, equipo alumno
+74:56:3C:66:B0:EE, IF01-04, 104, equipo alumno
+30:9C:23:40:39:BF, IF01-05, 105, equipo alumno
+30:9C:23:40:39:D1, IF01-06, 106, equipo alumno
+30:9C:23:40:39:CC, IF01-07, 107, equipo alumno
+30:9C:23:40:39:C6, IF01-08, 108, equipo alumno
+74:56:3C:66:B5:BE, IF01-09, 109, equipo alumno
+30:9C:23:40:39:C2, IF01-10, 110, equipo alumno
+30:9C:23:40:39:C8, IF01-11, 111, equipo alumno
+30:9C:23:40:39:CA, IF01-12, 112, equipo alumno
+74:56:3C:66:B2:BC, IF01-13, 113, equipo alumno
+30:9C:23:40:39:D0, IF01-14, 114, equipo alumno
+30:9C:23:40:39:BE, IF01-15, 115, equipo alumno
+30:9C:23:40:39:C5, IF01-16, 116, equipo alumno
+74:56:3C:66:B2:BB, IF01-17, 117, equipo alumno
+30:9C:23:40:39:C3, IF01-18, 118, equipo alumno
+30:9C:23:40:39:E7, IF01-19, 119, equipo alumno
+74:56:3C:66:B1:D3, IF01-20, 120, equipo alumno
+30:9C:23:40:39:C0, IF01-21, 121, equipo alumno
+30:9C:23:40:39:DC, IF01-22, 122, equipo alumno
+30:9C:23:40:39:CD, IF01-23, 123, equipo alumno
+30:9C:23:40:39:CB, IF01-24, 124, equipo alumno
+30:9C:23:47:A1:AA, IF01-25, 125, equipo alumno
+#,#,#, ######################################################################################
