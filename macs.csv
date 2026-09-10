@@ -72,8 +72,8 @@ bc:fc:e7:05:73:d5, SMRD-18, 138, equipo alumno+VICTOR
 7C:10:C9:83:A5:AF, IF04-19, 119, equipo alumno
 7C:10:C9:84:CC:26, IF04-20, 120, equipo alumno
 #,#,#, ######################################################################################
-#,#,#, AULA IF03                                                      ########################
-                 , IF03-00, 100, equipo profesor
+#,#,#, AULA IF03  (red 10.0.10.x sin proxy)                          ########################
+4C:CC:6A:42:F8:09, IF03-00, 100, equipo profesor
 30:9C:23:47:B4:03, IF03-01, 101, equipo alumno
 4C:CC:6A:42:F8:60, IF03-02, 102, equipo alumno
 4C:CC:6A:42:F6:A3, IF03-03, 103, equipo alumno
@@ -105,7 +105,7 @@ CC:28:AA:35:0B:21, IF03-22, 122, equipo alumno
 30:9C:23:40:3C:30, IF03-29, 129, equipo alumno
 4C:CC:6A:42:F6:77, IF03-30, 130, equipo alumno
 #,#,#, ######################################################################################
-#,#,#, AULA IF01                                                      ########################
+#,#,#, AULA IF01  (red 10.0.16.x sin proxy)                          ########################
 84:16:F9:04:10:D3, IF01-00, 100, equipo profesor
 00:E0:4C:68:90:C0, IF01-01, 101, equipo alumno
 30:9C:23:40:39:C1, IF01-02, 102, equipo alumno
