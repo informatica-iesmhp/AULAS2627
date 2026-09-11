@@ -20,7 +20,11 @@
 - name: Desactivar acceso SSH por contraseña
   hosts: all
   become: true
-
+  
+# Esta variable indica a SSH que acepte la clave nueva y la guarde en known_hosts automáticamente
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new'
+    
   tasks:
     - name: Forzar solo autenticación por clave en sshd_config
       ansible.builtin.lineinfile:
