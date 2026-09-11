@@ -83,6 +83,14 @@ en la sección `#POR HACER` — es decir: el rol equivalente a `preparaAD` para 
 - Si es así, lo más limpio es: sacar del dominio cada equipo ya clonado (`realm leave`, o localmente `net ads leave` si se unió con Samba/AD), terminar primero de darle nombre e IP definitivos, y **entonces** volver a unir cada equipo individualmente al dominio (con su hostname ya correcto). El proyecto ya tiene toda esta lógica resuelta y documentada para Ubuntu (`utilesAD/3-UneAlDominio.sh` / `4-SacaDelDominio.sh`, con cuenta delegada `svc-union-linux` y vault cifrado) — merece la pena adaptarla a Mint en vez de reinventarla, aunque sea a mano al principio.
 - Para IF03/IF04 (todavía sin desplegar): **no unas la maqueta/plantilla al dominio antes de clonar**. Únela después, equipo a equipo, una vez tenga su nombre definitivo — igual que ya hace (y explica muy bien por qué) el rol `preparaAD` en la línea Ubuntu.
 
+### Playbook creado: `03_reunir_dominio.yml` (11/09)
+
+Con SSH por clave ya funcionando en IF01/IF02, se ha escrito `03_reunir_dominio.yml` (entregado como fichero aparte, no vive todavía en el repo) para resolver esto por Ansible en vez de a mano equipo a equipo. Por cada host: comprueba que el hostname ya es el definitivo, saca del dominio actual si lo hay (`realm leave` + limpieza de caché SSSD), comprueba reloj NTP sincronizado (si no, aborta ese equipo para no dejar una cuenta huérfana), y vuelve a unir (`realm join`) con identidad propia, reponiendo `pam_sss`/`nsswitch` al final (mismo problema que ya documentó el proyecto en `preparaAD` al re-unir equipos).
+
+Es idempotente (si un equipo ya está bien, no lo toca) y exige `-e confirmar_reunion=true` a propósito, para que no se lance por error. Pensado para probarse primero con `--limit UN_EQUIPO` antes de lanzarlo a un aula entera. Necesita credenciales de un usuario de dominio con permisos de crear/borrar cuentas de equipo (pasadas por `-e` o, mejor, por `ansible-vault`) y asume el dominio `iesmhp.local` (variable `ad_dominio`, cambiar si no es ese) y que la unión existente usa `realmd`/`sssd-ad`/`adcli` (si el `login` de dominio ya funciona en los equipos, debería ser el caso).
+
+Pendiente de probar en un equipo real — no se ha podido validar contra un Active Directory de verdad desde aquí, solo la sintaxis YAML.
+
 ### Aclaración (10/09, tras probar login de dominio en un equipo desplegado)
 
 Se ha comprobado que el login con un usuario de dominio en un equipo ya desplegado **funciona sin problema**. Eso **no descarta** el problema — es justo el comportamiento esperado incluso en el caso patológico: el login de un usuario normal pasa por Kerberos con las credenciales **del usuario**, no por la cuenta de equipo, así que sigue funcionando aunque 20 clones compartan la misma cuenta de máquina. Kerberos no comprueba "¿esta cuenta de equipo ya se está usando desde otra IP ahora mismo?".
@@ -187,6 +195,37 @@ sudo cat /etc/sudoers.d/ansible-aula
 que el `User_Alias AULA_ADMINS` lista a los profesores que deberían tener acceso — los que falten no podrán usar `sudo -iu ansible-admin` hasta que se les vuelva a añadir (bien relanzando el script con el array completo, bien con `sudo visudo -f /etc/sudoers.d/ansible-aula` a mano, que es lo que recomienda el propio README para altas/bajas sueltas en vez de relanzar el script entero).
 
 Nota aparte: si el script llega a fallar la validación de sintaxis del sudoers (`visudo -cf`), borra el fichero entero por seguridad — en ese caso **nadie** queda autorizado hasta volver a ejecutarlo bien. El script lo avisa por pantalla si pasa.
+
+---
+
+### `02_harden_ssh.yml` falla con "REMOTE HOST IDENTIFICATION HAS CHANGED" o se queda colgado pidiendo confirmar la clave
+
+Visto el 11/09 en IF01, después de completar con éxito los pasos 0 y 1 y la verificación por `ping`. Es un bug del propio comando de verificación que da el README, no de tu ejecución.
+
+El comando de verificación del README combina **dos opciones que se anulan entre sí**:
+```bash
+--ssh-common-args='-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new'
+```
+`accept-new` acepta la clave nueva de cada host... pero `UserKnownHostsFile=/dev/null` hace que esa aceptación se escriba al vacío (`/dev/null`) en vez de guardarse de verdad. Resultado: el `ping` de verificación da "pong" en todos (porque acepta la clave en ese momento), pero **no queda ninguna clave guardada** en el `known_hosts` real de `ansible-admin`. Al llegar a `02_harden_ssh.yml`, que no lleva ningún `--ssh-common-args` (usa el `host_key_checking = True` de `ansible.cfg` a pelo, contra el `known_hosts` real), Ansible no tiene nada fiable con qué comparar: para los hosts sin ninguna entrada previa se queda **colgado** pidiendo confirmar la clave por teclado (no se puede responder en una ejecución no interactiva → parece que se cuelga); y para algún host que sí tenía una entrada antigua (p. ej. de una prueba manual con `ssh` antes de regenerar identidades en el paso 0), la clave ya no coincide con la nueva → error "REMOTE HOST IDENTIFICATION HAS CHANGED".
+
+**Arreglo** (corta la ejecución colgada con `Ctrl+C` primero):
+```bash
+cd ~/ansible-aulas
+
+# 1. Quitar cualquier entrada vieja/errónea de esas IPs
+for ip in $(grep -oP 'ansible_host=\K\S+' inventarios/IF01.ini); do
+    ssh-keygen -f ~/.ssh/known_hosts -R "$ip"
+done
+
+# 2. Rellenar known_hosts con las claves REALES actuales (las que puso el paso 0)
+for ip in $(grep -oP 'ansible_host=\K\S+' inventarios/IF01.ini); do
+    ssh-keyscan -t ed25519 "$ip" >> ~/.ssh/known_hosts
+done
+
+# 3. Relanzar el paso 2 tal cual
+ansible-playbook -i inventarios/IF01.ini playbooks/02_harden_ssh.yml -u ansible-admin
+```
+Repetir para cada aula/inventario (`IF02.ini`, etc.) cuando llegue el momento — este bug se repetirá igual con cualquier aula que siga el README tal cual está ahora. Merece la pena avisar a Víctor para que corrija el comando de verificación del README (quitar `UserKnownHostsFile=/dev/null` de esa línea concreta, dejando solo `StrictHostKeyChecking=accept-new` contra el `known_hosts` real).
 
 ---
 
