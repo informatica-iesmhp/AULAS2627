@@ -12,7 +12,7 @@ Ficheros de configuración para la instalación automatizada de los equipos de d
 ## Carpeta Estacion delgada (Thin Station):
 Ficheros de configuración para la instalación automatizada de clientes ligeros (no usado actualmente en el IES)
 ## Carpeta Ubuntu:
-Ficheros de configuración para la instalación automatizada de los equipos del aula IF04 con Ubuntu 26.04 LTS.
+Ficheros de configuración para la instalación automatizada de los equipos del aula IF04 con Ubuntu 26.04 LTS y configurada la instalación para usar el perfil de hardware de esos equipos y ocn particiones ZFS.
 ## Carpeta W11:
 Ficheros de configuración para la instalación automatizada de equipos con Windows 11. (Sin usar en aulas reales).
 ## USO -- por hacer (descripciones en cada apartado)
