@@ -116,6 +116,10 @@ Todo lo que sigue son cambios sobre los equipos ya clonados (por SSH/Ansible) y 
 ```bash
 sudo apt install -y nmap   # instalar_ansible_profesor.sh instala ansible/sshpass/colecciones, pero NO nmap
 ```
+Configurar este parametro en el archivo: ansible.cfg que aumenta el rendimiento de ansible ya que activa el multiproceso.
+[ssh_connection]
+pipelining = True
+
 
 **1. Arreglar `macs.csv` (bloquea IF02 entero):** añadir una sección nueva con el mismo formato que las demás:
 ```
