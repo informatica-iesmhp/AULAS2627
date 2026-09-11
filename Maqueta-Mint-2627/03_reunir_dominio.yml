@@ -1,0 +1,253 @@
+---
+# 03_reunir_dominio.yml
+# ---------------------------------------------------------------------------
+# Arregla el problema de la "identidad de dominio compartida": la maqueta se
+# unió al Active Directory ANTES de clonarla, así que todos los clones de un
+# aula comparten la MISMA cuenta de equipo (mismo SID, mismo keytab de
+# Kerberos). Este playbook, equipo a equipo:
+#
+#   1. Comprueba que el hostname YA es el definitivo (si no, para en seco:
+#      no tiene sentido unir al dominio un equipo mal nombrado — es
+#      exactamente el error que documenta el proyecto en la línea Ubuntu,
+#      rol preparaAD: "si NombreIP fallara, se crearía una cuenta de equipo
+#      basura en el dominio").
+#   2. Si el equipo está unido a algún dominio, lo saca (realm leave) y
+#      limpia los restos que deja realmd (caché de SSSD, snippet huérfano).
+#   3. Comprueba que el reloj está sincronizado por NTP (Kerberos exige
+#      menos de 5 minutos de desfase con el DC; si no, ABORTA antes de
+#      intentar la unión, para no dejar una cuenta de equipo huérfana).
+#   4. Une el equipo de nuevo (realm join) con su hostname definitivo, a una
+#      cuenta de equipo PROPIA y única.
+#   5. Repone pam_sss / 'sss' en nsswitch — realmd NO los repone solo al
+#      re-unir un equipo cuyo paquete libpam-sss ya estaba instalado (es un
+#      problema real que el propio proyecto ya sufrió y documentó en
+#      Ubuntu/ansible/roles/preparaAD: "equipo unido pero sin poder hacer
+#      login con ningún usuario del dominio").
+#
+# Es idempotente: si un equipo ya está unido exactamente al dominio pedido,
+# no se toca. Si no tiene 'realm' instalado (no debería pasar si ya podéis
+# hacer login con un usuario de dominio ahí), se omite con un aviso en vez
+# de fallar el play entero.
+#
+# ---------------------------------------------------------------------------
+# SEGURIDAD: este playbook TOCA cuentas de equipo reales del Active
+# Directory. La primera vez, pruébalo en UN equipo con --limit antes de
+# lanzarlo a un aula entera:
+#
+#   ansible-playbook -i inventarios/IF01.ini playbooks/03_reunir_dominio.yml \
+#       -u ansible-admin --limit IF01-01 \
+#       -e confirmar_reunion=true \
+#       -e ad_dominio=iesmhp.local \
+#       -e ad_admin_user=TU_USUARIO_DE_DOMINIO \
+#       -e ad_admin_password=TU_CONTRASEÑA
+#
+# La contraseña en la línea de comandos queda en el historial de la shell.
+# Mejor pasarla con ansible-vault, en un fichero aparte (que NO se sube al
+# repo en claro):
+#
+#   cat > vault/dominio-vault.yml <<'EOF'
+#   ad_admin_user: TU_USUARIO_DE_DOMINIO
+#   ad_admin_password: TU_CONTRASEÑA
+#   EOF
+#   ansible-vault encrypt vault/dominio-vault.yml
+#
+#   ansible-playbook -i inventarios/IF01.ini playbooks/03_reunir_dominio.yml \
+#       -u ansible-admin --limit IF01-01 \
+#       -e confirmar_reunion=true -e ad_dominio=iesmhp.local \
+#       -e @vault/dominio-vault.yml --ask-vault-pass
+#
+# Cuando compruebes que ha ido bien en ese equipo (ver "Verificación" más
+# abajo), quita el --limit y lánzalo contra el resto del inventario del
+# aula (mejor por partes, no hace falta todo de golpe).
+#
+# Verificación después de lanzarlo:
+#   ansible all -i inventarios/IF01.ini -u ansible-admin \
+#       -m command -a "realm list --name-only"
+# Cada equipo debe responder con el nombre del dominio, y cada uno debe
+# tener AHORA una cuenta de equipo propia en el AD (antes compartían una
+# sola, con el nombre original de la plantilla).
+# ---------------------------------------------------------------------------
+
+- name: Reunir cada equipo al dominio con una identidad propia y única
+  hosts: all
+  become: true
+  serial: 3   # no atacar el DC con muchos leave/join a la vez; ajusta si hace falta
+  gather_facts: true
+
+  vars:
+    ad_dominio: "iesmhp.local"   # <-- cambia si vuestro dominio real es otro
+    ad_ou: ""                     # <-- opcional, p.ej. "OU=EquiposLinux,DC=iesmhp,DC=local"
+    ad_membership_software: ""   # <-- vacío = adcli (Windows AD, lo normal). "samba" solo si el DC fuera Samba.
+    confirmar_reunion: false      # hay que pasar -e confirmar_reunion=true a propósito
+
+  tasks:
+    - name: Cortafuegos de seguridad -- exigir confirmación explícita
+      ansible.builtin.assert:
+        that: confirmar_reunion | bool
+        fail_msg: >-
+          Este playbook saca y vuelve a unir equipos al dominio de verdad.
+          Relánzalo con -e confirmar_reunion=true (y, la primera vez,
+          --limit UN_EQUIPO para probarlo antes de lanzarlo a toda el aula).
+      run_once: true
+
+    - name: Comprobar que llegan las credenciales de dominio
+      ansible.builtin.assert:
+        that:
+          - ad_admin_user is defined
+          - ad_admin_password is defined
+        fail_msg: >-
+          Faltan ad_admin_user / ad_admin_password. Pásalos con -e o con un
+          fichero de ansible-vault (ver cabecera de este playbook).
+      run_once: true
+      no_log: true
+
+    - name: Comprobar que el hostname de este equipo ya es el definitivo
+      ansible.builtin.assert:
+        that: ansible_hostname == inventory_hostname
+        fail_msg: >-
+          El hostname real ({{ ansible_hostname }}) no coincide con el del
+          inventario ({{ inventory_hostname }}). NO se toca el dominio en
+          este equipo hasta que tenga su nombre definitivo.
+
+    - name: Comprobar que 'realm' está disponible
+      ansible.builtin.command: realm --version
+      register: realm_bin
+      changed_when: false
+      failed_when: false
+
+    - name: Avisar y omitir equipo si no hay 'realm' (realmd) instalado
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: no se encuentra 'realm' (¿unión al
+          dominio hecha de otra forma, p.ej. winbind? Revísalo a mano).
+          Se omite este equipo.
+      when: realm_bin.rc | default(1) != 0
+
+    - name: Bloque de salida + entrada del dominio (solo si hay 'realm')
+      when: realm_bin.rc | default(1) == 0
+      block:
+
+        - name: ¿A qué dominio está unido este equipo ahora mismo?
+          ansible.builtin.command: realm list --name-only
+          register: dominio_actual_raw
+          changed_when: false
+          failed_when: false
+
+        - name: Normalizar el resultado (quitar saltos de línea/espacios)
+          ansible.builtin.set_fact:
+            dominio_previo: "{{ dominio_actual_raw.stdout | default('') | trim }}"
+
+        - name: Ya está unido exactamente al dominio pedido -> no tocar
+          ansible.builtin.debug:
+            msg: "{{ inventory_hostname }} ya está unido a {{ ad_dominio }}. No se toca."
+          when: dominio_previo == ad_dominio
+
+        - name: Salir/limpiar/entrar de verdad
+          when: dominio_previo != ad_dominio
+          block:
+
+            - name: Salir del dominio actual, si hay alguno (realm leave)
+              ansible.builtin.command:
+                cmd: "realm leave --unattended --user={{ ad_admin_user }} {{ dominio_previo }}"
+                stdin: "{{ ad_admin_password }}\n"
+              when: dominio_previo | length > 0
+              register: salida_dominio
+              changed_when: salida_dominio.rc == 0
+              no_log: true
+
+            - name: Vaciar caché de SSSD del enrolamiento anterior
+              ansible.builtin.shell: "rm -f /var/lib/sss/db/* /var/lib/sss/mc/* 2>/dev/null || true"
+              changed_when: false
+              when: dominio_previo | length > 0
+
+            - name: Eliminar snippet SSSD huérfano si existiera
+              ansible.builtin.file:
+                path: /etc/sssd/conf.d/10-iac-ad.conf
+                state: absent
+
+            - name: Comprobar reloj sincronizado por NTP (Kerberos exige <5 min de desfase)
+              ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+              register: reloj_ok
+              changed_when: false
+
+            - name: Forzar sincronización si el reloj no está OK (chrony)
+              ansible.builtin.shell: >-
+                chronyc makestep 0.1 3 >/dev/null 2>&1;
+                chronyc waitsync 30 0.05 0 1 >/dev/null 2>&1 || true
+              when: "'yes' not in reloj_ok.stdout"
+              changed_when: false
+              failed_when: false
+
+            - name: Volver a comprobar el reloj tras forzar la sincronización
+              ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+              register: reloj_ok2
+              changed_when: false
+
+            - name: Abortar en ESTE equipo si el reloj sigue mal (evita cuenta huérfana en AD)
+              ansible.builtin.fail:
+                msg: >-
+                  {{ inventory_hostname }}: el reloj no está sincronizado por
+                  NTP (Kerberos exige <5 min de desfase con el DC). No se
+                  intenta el join para no dejar un objeto de equipo huérfano.
+              when: "'yes' not in reloj_ok2.stdout"
+
+            - name: Unir el equipo al dominio con su propia identidad (realm join)
+              ansible.builtin.command:
+                cmd: >-
+                  realm join --unattended --user={{ ad_admin_user }}
+                  {{ ('--membership-software=' + ad_membership_software + ' --client-software=sssd') if ad_membership_software | length > 0 else '' }}
+                  {{ ('--computer-ou=' + ad_ou) if ad_ou | length > 0 else '' }}
+                  {{ ad_dominio }}
+                stdin: "{{ ad_admin_password }}\n"
+              register: union_dominio
+              changed_when: union_dominio.rc == 0
+              no_log: true
+
+            - name: Verificar que ha quedado unido
+              ansible.builtin.command: realm list --name-only
+              register: verificacion_union
+              changed_when: false
+
+            - name: Fallar si no quedó unido
+              ansible.builtin.assert:
+                that: (verificacion_union.stdout | default('') | trim) | length > 0
+                fail_msg: "{{ inventory_hostname }}: realm join terminó pero 'realm list' sigue vacío."
+
+            - name: Reponer pam_sss en el stack PAM (por si el postinst no se re-ejecuta al re-unir)
+              ansible.builtin.command: pam-auth-update --enable sss --force
+              environment:
+                DEBIAN_FRONTEND: noninteractive
+              changed_when: true
+              failed_when: false
+
+            - name: Reponer 'sss' en nsswitch.conf (passwd) si faltara
+              ansible.builtin.shell: >-
+                grep -qE '^passwd:.*\bsss\b' /etc/nsswitch.conf ||
+                sed -i '/^passwd:/ s/$/ sss/' /etc/nsswitch.conf
+              changed_when: false
+              failed_when: false
+
+            - name: Reponer 'sss' en nsswitch.conf (group) si faltara
+              ansible.builtin.shell: >-
+                grep -qE '^group:.*\bsss\b' /etc/nsswitch.conf ||
+                sed -i '/^group:/ s/$/ sss/' /etc/nsswitch.conf
+              changed_when: false
+              failed_when: false
+
+            - name: Informar
+              ansible.builtin.debug:
+                msg: "{{ inventory_hostname }}: reunido a {{ ad_dominio }} con identidad propia."
+
+- name: Aviso final
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Recordatorio
+      ansible.builtin.debug:
+        msg: >-
+          Hecho (o revisado). Verifica con:
+          ansible all -i inventarios/IF01.ini -u ansible-admin -m command
+          -a "realm list --name-only"
+          Cada equipo debe responder con el dominio, y en el AD cada uno
+          debería tener ya su propia cuenta de equipo (no una compartida).
