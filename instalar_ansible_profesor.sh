@@ -99,11 +99,11 @@ become_method = sudo
 EOF
 fi
 
-if [[ ! -f ~/ansible-aulas/inventarios/aula1.ini ]]; then
-cat > ~/ansible-aulas/inventarios/aula1.ini <<'EOF'
-[aula1]
-pc01 ansible_host=192.168.1.101
-pc02 ansible_host=192.168.1.102
+if [[ ! -f ~/ansible-aulas/inventarios/IF0X.ini ]]; then
+cat > ~/ansible-aulas/inventarios/IF0X.ini <<'EOF'
+[IF0X]  # Grupo de hosts del aula IF0X
+IF0X-00 ansible_host=10.0.X.100
+IF0X-01 ansible_host=10.0.X.102
 # ... añade aquí el resto de equipos del aula (incluido el PC del profesor
 #     si también se gestiona por Ansible)
 EOF
@@ -164,4 +164,4 @@ echo
 echo "Uso diario (un profesor autorizado, con su cuenta de dominio):"
 echo "  sudo -iu ${ANSIBLE_ADMIN_USER}"
 echo "  cd ~/ansible-aulas"
-echo "  ansible-playbook -i inventarios/aula1.ini playbooks/..."
+echo "  ansible-playbook -i inventarios/IF0X.ini playbooks/..."
