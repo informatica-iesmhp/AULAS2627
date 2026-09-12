@@ -56,8 +56,10 @@ ANSIBLE_ADMIN_HOME=$(getent passwd "$ANSIBLE_ADMIN_USER" | cut -d: -f6)
 log "Actualizando índices de paquetes..."
 apt-get update -y
 
-log "Instalando Ansible, sshpass y dependencias (a nivel de sistema)..."
-apt-get install -y ansible sshpass python3-pip
+log "Instalando Ansible, sshpass, nmap y dependencias (a nivel de sistema)..."
+# nmap hace falta en este equipo (nodo de control) para el bootstrap por red
+# de nombre/IP del resto del aula (ver Fase 1 del README y escanear_aula.sh)
+apt-get install -y ansible sshpass nmap python3-pip
 
 log "Instalando colecciones de Ansible (como ${ANSIBLE_ADMIN_USER})..."
 # ansible.posix -> módulo "authorized_key" que usa 01_bootstrap_keys.yml
@@ -96,6 +98,11 @@ retry_files_enabled = False
 [privilege_escalation]
 become        = True
 become_method = sudo
+
+[ssh_connection]
+# Reutiliza la misma conexión SSH para varias tareas en vez de abrir una
+# nueva cada vez: acelera bastante los playbooks contra 20-30 equipos.
+pipelining = True
 EOF
 fi
 

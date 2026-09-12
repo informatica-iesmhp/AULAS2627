@@ -71,7 +71,10 @@
         msg: >-
           Clave copiada. AHORA verifica que funciona SIN contraseña con:
           ansible all -i inventarios/aula1.ini -m ping -u ansible-admin
-          --ssh-common-args='-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new'
-          Si todos responden "pong", ejecuta playbooks/02_harden_ssh.yml
-          para desactivar la contraseña. Si NO responden, no sigas: revisa
-          qué equipos han fallado antes de continuar.
+          --ssh-common-args='-o StrictHostKeyChecking=accept-new'
+          (sin UserKnownHostsFile=/dev/null: esa combinación se anula a sí
+          misma y deja known_hosts vacío, lo que hace que 02_harden_ssh.yml
+          se cuelgue o falle). Si todos responden "pong", ejecuta
+          playbooks/02_harden_ssh.yml para desactivar la contraseña. Si NO
+          responden, no sigas: revisa qué equipos han fallado antes de
+          continuar.
