@@ -1,0 +1,180 @@
+---
+# 04_habilitar_escritorio_remoto.yml
+# ---------------------------------------------------------------------------
+# EXTRA, opcional, no forma parte del bootstrap obligatorio (00-03). Permite
+# a los profesores autorizados de un aula conectarse por escritorio remoto
+# (RDP) a CUALQUIER equipo del aula -- el del profesor o uno de alumno --
+# desde otro PC dentro de la red del centro, sin tener que estar físicamente
+# delante. Pensado para: preparar algo con antelación, o entrar cuando otro
+# compañero está dando clase en ese momento en esa aula.
+#
+# Cómo funciona:
+#   - Se instala xrdp + xorgxrdp. Con xorgxrdp, cada conexión remota abre
+#     una sesión gráfica NUEVA e independiente -- NO la que ya esté abierta
+#     en el monitor físico. Así, si un profesor está dando clase con su
+#     sesión local, otro profesor puede entrar en remoto con LA SUYA propia
+#     sin verse ni pisarse.
+#   - Cada profesor entra con SU PROPIA cuenta de dominio (nunca con
+#     ansible-admin: esa cuenta es solo de automatización, no tiene
+#     contraseña utilizable desde que se aplicó 02_harden_ssh.yml).
+#   - Solo pueden autenticarse por RDP los usuarios listados en
+#     xrdp_allowed_users (pam_listfile sobre el servicio xrdp-sesman). Esta
+#     restricción es independiente de sudoers/SSH: no toca el login gráfico
+#     local (consola), ni SSH, ni sudo -- solo el acceso por RDP.
+#   - El puerto RDP (3389) solo se abre en el firewall (ufw) para la red
+#     del centro (red_centro_cidr) -- nunca debe exponerse a Internet.
+#
+# *** PENDIENTE DE VALIDAR en un equipo real (Cinnamon + xrdp tiene algunas
+#     particularidades conocidas -- ver nota MUFFIN_DISABLE_HW_CURSOR más
+#     abajo). Prueba primero con --limit en UN equipo antes de lanzarlo a
+#     toda el aula, e inicia sesión de verdad con un usuario autorizado
+#     antes de darlo por bueno. Si sale pantalla negra o se corta la
+#     sesión, revisa /var/log/xrdp-sesman.log y /var/log/xrdp.log en ese
+#     equipo. ***
+#
+# IMPORTANTE sobre el firewall: si esta es la primera vez que se activa
+# ufw en el aula (hasta ahora prep_maqueta.sh lo dejaba apagado a
+# propósito), este playbook abre también el propio SSH (perfil "OpenSSH")
+# ANTES de activar ufw, para no cortar el acceso de Ansible a sí mismo.
+# Aun así, ten en cuenta que activar ufw aquí es la primera vez que el
+# aula tiene cortafuegos: si más adelante configuráis Veyon u otro
+# servicio con puertos propios, habrá que añadir su regla de ufw también
+# (no lo hace este playbook).
+#
+# Requisitos previos:
+#   - Login de dominio ya funcionando en los equipos (SSSD) -- Fase 1-2 ya
+#     aplicadas.
+#   - SSH por clave ya funcionando (00/01/02 ya aplicados).
+#
+# Uso recomendado: define las variables en un fichero de group_vars por
+# aula (así no hay que teclearlas cada vez ni arriesgarse a olvidar a
+# alguien), por ejemplo ~/ansible-aulas/group_vars/aula1.yml:
+#
+#   xrdp_allowed_users:
+#     - profesor.manana
+#     - profesor.tarde
+#   red_centro_cidr: 10.0.0.0/16   # <-- AJUSTA a la red real del centro
+#
+# Y luego, para probar primero en un solo equipo:
+#
+#   ansible-playbook -i inventarios/aula1.ini playbooks/04_habilitar_escritorio_remoto.yml \
+#       -u ansible-admin --limit pc01
+#
+# Cuando confirmes que funciona bien en ese equipo, lánzalo sin --limit
+# contra el resto del aula. Para AÑADIR un profesor más adelante, edita la
+# lista xrdp_allowed_users en el group_vars y vuelve a lanzar el playbook
+# -- igual que con /etc/sudoers.d/ansible-aula, esto SOBREESCRIBE la lista
+# entera cada vez, así que incluye siempre a todos los que deban seguir
+# teniendo acceso, no solo al nuevo.
+# ---------------------------------------------------------------------------
+
+- name: Habilitar y restringir escritorio remoto (xrdp) en el aula
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    red_centro_cidr: "CAMBIA_ESTO_A_TU_RED/24"   # <-- red(es) del centro desde las que se permite RDP
+    xrdp_allowed_users: []                        # <-- usuarios de dominio autorizados a conectarse por RDP
+    xrdp_allowed_file: /etc/xrdp/allowed_users.list
+
+  tasks:
+    - name: Cortafuegos de seguridad -- exigir lista de usuarios no vacía
+      ansible.builtin.assert:
+        that: xrdp_allowed_users | length > 0
+        fail_msg: >-
+          xrdp_allowed_users está vacía. Defínela (por ejemplo en
+          group_vars/aulaN.yml) con, al menos, los 2 profesores
+          autorizados de esta aula antes de lanzar este playbook.
+      run_once: true
+
+    - name: Cortafuegos de seguridad -- exigir que se haya fijado la red del centro
+      ansible.builtin.assert:
+        that: "'CAMBIA_ESTO' not in red_centro_cidr"
+        fail_msg: >-
+          red_centro_cidr sigue con el valor de plantilla. Defínela con la
+          red real del centro (p.ej. -e red_centro_cidr=10.0.0.0/16) antes
+          de continuar -- si no, o falla, o se queda sin ninguna red
+          permitida.
+      run_once: true
+
+    - name: Instalar xrdp y el backend xorgxrdp (sesión propia, no comparte pantalla)
+      ansible.builtin.apt:
+        name:
+          - xrdp
+          - xorgxrdp
+        state: present
+        update_cache: true
+
+    - name: Añadir el usuario xrdp al grupo ssl-cert (certificado autofirmado de la sesión)
+      ansible.builtin.user:
+        name: xrdp
+        groups: ssl-cert
+        append: true
+
+    - name: Escribir la lista de usuarios autorizados a conectarse por RDP
+      ansible.builtin.copy:
+        dest: "{{ xrdp_allowed_file }}"
+        mode: "0644"
+        content: |
+          # Generado por 04_habilitar_escritorio_remoto.yml -- no editar a
+          # mano, se SOBREESCRIBE en cada ejecución del playbook.
+          {% for u in xrdp_allowed_users %}
+          {{ u }}
+          {% endfor %}
+
+    - name: Restringir el acceso a xrdp-sesman solo a esos usuarios (pam_listfile)
+      ansible.builtin.blockinfile:
+        path: /etc/pam.d/xrdp-sesman
+        marker: "# {mark} ANSIBLE MANAGED BLOCK -- restricción xrdp_allowed_users"
+        insertbefore: BOF
+        block: |
+          account required pam_listfile.so item=user sense=allow file={{ xrdp_allowed_file }} onerr=fail
+
+    - name: 'Recomendación conocida Cinnamon+xrdp: desactivar cursor por hardware (evita pantalla en negro)'
+      ansible.builtin.lineinfile:
+        path: /etc/xrdp/startwm.sh
+        insertafter: '^#!'
+        line: "export MUFFIN_DISABLE_HW_CURSOR=1"
+        state: present
+      # No hace falta forzar aquí qué sesión lanzar: al ser esta maqueta la
+      # edición Cinnamon (única DE instalada), /etc/X11/Xsession -- al que
+      # startwm.sh ya llama por defecto -- la elige sin ambigüedad.
+
+    - name: Asegurar que el propio SSH de Ansible sigue permitido ANTES de activar el firewall
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Abrir el puerto RDP en el firewall solo para la red del centro
+      community.general.ufw:
+        rule: allow
+        port: "3389"
+        proto: tcp
+        from_ip: "{{ red_centro_cidr }}"
+
+    - name: Activar ufw si no lo estaba ya
+      community.general.ufw:
+        state: enabled
+        logging: low
+
+    - name: Reiniciar xrdp para aplicar todos los cambios
+      ansible.builtin.systemd:
+        name: xrdp
+        state: restarted
+        enabled: true
+
+- name: Aviso final
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Recordatorio
+      ansible.builtin.debug:
+        msg: >-
+          xrdp activo y firewall restringido a red_centro_cidr. Pruébalo
+          conectando con el cliente de Escritorio remoto (RDP) a la IP de
+          UN equipo, usando la cuenta de dominio de un profesor de
+          xrdp_allowed_users. Si falla la pantalla o se queda en negro,
+          revisa /var/log/xrdp-sesman.log y /var/log/xrdp.log en ese
+          equipo antes de lanzarlo al resto del aula.

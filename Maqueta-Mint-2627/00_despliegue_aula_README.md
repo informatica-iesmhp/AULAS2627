@@ -23,6 +23,7 @@ ejecuta en un sitio y un momento distintos:
 | `configurar_equipo.sh` | Cada equipo ya clonado y arrancado | Una vez por equipo, justo tras el primer arranque (le pone nombre e IP fija) |
 | `ansible-bootstrap/ansible_bootstrap.zip` | PC del profesor | Herramienta de apoyo para lanzar `configurar_equipo.sh` por red en todo el aula a la vez (ver Fase 1) |
 | `00_regenerate_identity.yml` → `03_reunir_dominio.yml` | PC del profesor (como `ansible-admin`) | Playbooks de esta guía, en el orden que se explica más abajo |
+| `04_habilitar_escritorio_remoto.yml` | PC del profesor (como `ansible-admin`) | Opcional, cuando haga falta — escritorio remoto (xrdp) para los profesores autorizados, ver sección "Extra" |
 | `diagnostico-bootstrap-aulas-IF01-IF04.md` | — | Registro histórico de incidencias de IF01/IF02 y cómo se resolvieron. Fuente de esta actualización |
 | `tareas-ansible.md` | — | Lista de tareas pendientes del aula (seguimiento, no técnico) |
 
@@ -462,6 +463,87 @@ Cada equipo debe responder con el nombre del dominio.
 
 ---
 
+---
+
+## Extra (opcional) — Escritorio remoto para los profesores (`04_habilitar_escritorio_remoto.yml`)
+
+> **Pendiente de validar en un equipo real.** Igual que `03_reunir_dominio.yml`,
+> se ha revisado su lógica pero no se ha probado todavía contra la
+> maqueta. Pruébalo primero con `--limit` en un equipo y entra de verdad
+> por escritorio remoto antes de darlo por bueno en toda el aula.
+
+No forma parte del bootstrap obligatorio (Fases 0-3): es una comodidad
+para que los profesores autorizados puedan conectarse por escritorio
+remoto a **cualquier equipo del aula** (el del profesor o uno de alumno)
+desde otro PC **dentro de la red del centro** — para preparar algo con
+antelación, o para entrar cuando otro compañero está dando clase en ese
+momento en esa aula. No pensado para conectarse desde fuera del centro
+(eso necesitaría, como mínimo, una VPN delante — nunca expongas el puerto
+RDP a Internet).
+
+Usa `xrdp` con el backend `xorgxrdp`: cada conexión remota abre una
+sesión gráfica **nueva e independiente**, no la que ya esté encendida en
+la pantalla física — así un profesor puede entrar en remoto con su propia
+sesión mientras otro sigue dando clase con la suya, sin pisarse. Cada uno
+entra con **su propia cuenta de dominio** (nunca con `ansible-admin`, que
+no tiene contraseña utilizable desde el Paso 2).
+
+### Requisitos
+
+- Fases 0-2 ya aplicadas en esa aula (login de dominio y SSH por clave
+  funcionando).
+- Define, antes de lanzarlo, quién puede conectarse y desde qué red, en
+  un fichero de `group_vars` de esa aula (así no hay que teclearlo cada
+  vez ni arriesgarse a olvidar a alguien al ampliar la lista):
+
+```bash
+mkdir -p ~/ansible-aulas/group_vars
+cat > ~/ansible-aulas/group_vars/aula1.yml <<'EOF'
+xrdp_allowed_users:
+  - profesor.manana
+  - profesor.tarde
+red_centro_cidr: 10.0.0.0/16   # <-- AJUSTA a la red real del centro
+EOF
+```
+
+(`aula1` debe coincidir con el nombre del grupo de tu inventario, p.ej.
+`[aula1]` en `inventarios/aula1.ini`.)
+
+### Ejecución
+
+Prueba primero en un solo equipo:
+
+```bash
+ansible-playbook -i inventarios/aula1.ini playbooks/04_habilitar_escritorio_remoto.yml \
+    -u ansible-admin --limit pc01
+```
+
+Conéctate con el cliente de Escritorio remoto (RDP) de Windows, o
+`xfreerdp`/Remmina desde Linux, a la IP de ese equipo, con la cuenta de
+dominio de uno de los profesores de `xrdp_allowed_users`. Si funciona,
+lánzalo sin `--limit` contra el resto del aula.
+
+Para **añadir** un profesor más adelante, edita la lista
+`xrdp_allowed_users` del `group_vars` (con todos los que deban seguir
+teniendo acceso, no solo el nuevo) y vuelve a lanzar el playbook — igual
+que con `/etc/sudoers.d/ansible-aula`, la lista se sobreescribe entera en
+cada ejecución, no se amplía sola.
+
+### Qué toca (y qué no)
+
+- Instala `xrdp` + `xorgxrdp`, y restringe quién puede autenticarse por
+  RDP a la lista `xrdp_allowed_users` (con `pam_listfile` sobre el
+  servicio `xrdp-sesman`). Esta restricción **no afecta** al login
+  gráfico local (consola), ni a SSH, ni a `sudo` — solo al acceso por
+  RDP.
+- Si es la primera vez que se activa `ufw` en esa aula (hasta ahora
+  `prep_maqueta.sh` lo dejaba parado a propósito), el playbook permite
+  primero el propio SSH (perfil `OpenSSH`) antes de activar el
+  cortafuegos, para no cortarle a Ansible el acceso a sí mismo. Ten en
+  cuenta que, a partir de aquí, esa aula ya tiene cortafuegos: si más
+  adelante configuráis Veyon o cualquier otro servicio con puertos
+  propios, habrá que añadir su regla de `ufw` — este playbook no lo hace.
+
 ## Checklist rápido (para repetir aula por aula)
 
 1. *(Solo la primera vez, por PC de profesor, como `depinfo`)*
@@ -485,6 +567,9 @@ Cada equipo debe responder con el nombre del dominio.
     `03_reunir_dominio.yml`, primero con `--limit` en un equipo.
 13. A partir de aquí, gestión normal del aula con el resto de playbooks
     (GLPI-Agent, software específico del ciclo, etc.)
+14. *(Opcional)* `04_habilitar_escritorio_remoto.yml` si los profesores
+    necesitan entrar por escritorio remoto desde dentro del centro —
+    primero con `--limit` en un equipo, ver sección "Extra" más arriba.
 
 ## Notas / problemas típicos
 
@@ -549,3 +634,14 @@ Cada equipo debe responder con el nombre del dominio.
   error que más dolores de cabeza da más adelante y el más difícil de
   diagnosticar. Únela después, equipo a equipo, con `03_reunir_dominio.yml`
   (Fase 3).
+- **Escritorio remoto (`04_habilitar_escritorio_remoto.yml`) con pantalla
+  en negro o sesión que se corta**: es un problema conocido de Cinnamon
+  sobre xrdp; el playbook ya aplica el workaround más habitual
+  (`MUFFIN_DISABLE_HW_CURSOR=1`). Si persiste, revisa
+  `/var/log/xrdp-sesman.log` y `/var/log/xrdp.log` en ese equipo.
+- **Un profesor de `xrdp_allowed_users` no puede conectarse por escritorio
+  remoto**: comprueba que su usuario está bien escrito en el
+  `group_vars/aulaN.yml` de esa aula tal y como lo resuelve SSSD
+  (`id su.usuario`), y que has vuelto a lanzar el playbook después de
+  editar la lista (se sobreescribe entera, no se amplía sola — mismo
+  comportamiento que `/etc/sudoers.d/ansible-aula`).
