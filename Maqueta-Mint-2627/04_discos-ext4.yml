@@ -4,41 +4,42 @@
   become: yes
 
   tasks:
-    - name: 1. Asegurar que están instaladas las herramientas de particionado y ext4
-      apt:
-        name:
-          - parted
-          - gdisk
-          - e2fsprogs
-        state: present
-        update_cache: yes
+#    - name: 1. Asegurar que están instaladas las herramientas de particionado y ext4
+#      apt:
+#        name:
+#          - parted
+#          - gdisk
+#          - e2fsprogs
+#        state: present
+#        update_cache: yes
 
-    - name: 2. Crear tabla de particiones GPT y partición única en /dev/sdb
+
+    - name: 2a. Desmontar /dev/sdb1 en cualquier punto del sistema para liberar el disco
+      command: umount /dev/sdb1
+      register: umount_result
+      failed_when: false
+      changed_when: umount_result.rc == 0
+
+    - name: 2b. Limpiar la tabla de particiones previa de /dev/sdb
+      command: wipefs -a -f /dev/sdb
+      changed_when: true
+
+    - name: 2c. Crear tabla de particiones GPT de cero y partición única al 100%
       parted:
         device: /dev/sdb
         label: gpt
         number: 1
+        part_start: "0%"
+        part_end: "100%"
         state: present
         fs_type: ext4
 
     - name: 3. Formatear /dev/sdb1 en EXT4 con la etiqueta DATOS
-      # force: true es necesario porque el paso 2 (parted) crea una tabla de
-      # particiones GPT nueva, pero NO borra la firma del sistema de ficheros
-      # que hubiera antes en esos mismos sectores -- si el disco secundario ya
-      # traía algo (NTFS/FAT de fábrica, o un Windows anterior en ese equipo),
-      # el módulo filesystem se niega a formatear por seguridad y falla con
-      # "already used as ntfs/vfat, use force=true to overwrite". Como el
-      # objetivo explícito de este playbook es precisamente reutilizar /dev/sdb
-      # como partición de datos de alumnos, forzar aquí es lo esperado.
-      # Es seguro para relanzamientos futuros: si /dev/sdb1 YA es ext4 (p. ej.
-      # en una segunda pasada), el módulo lo detecta y no vuelve a formatear
-      # aunque force esté a true -- force solo entra en juego cuando el tipo
-      # de sistema de ficheros actual es DISTINTO del pedido.
       filesystem:
         fstype: ext4
         dev: /dev/sdb1
         opts: -L DATOS
-        force: true
+        force: yes
 
     - name: 4. Configurar punto de montaje permanente en /mnt/datos
       mount:
