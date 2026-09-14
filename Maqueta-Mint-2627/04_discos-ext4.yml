@@ -22,10 +22,23 @@
         fs_type: ext4
 
     - name: 3. Formatear /dev/sdb1 en EXT4 con la etiqueta DATOS
+      # force: true es necesario porque el paso 2 (parted) crea una tabla de
+      # particiones GPT nueva, pero NO borra la firma del sistema de ficheros
+      # que hubiera antes en esos mismos sectores -- si el disco secundario ya
+      # traía algo (NTFS/FAT de fábrica, o un Windows anterior en ese equipo),
+      # el módulo filesystem se niega a formatear por seguridad y falla con
+      # "already used as ntfs/vfat, use force=true to overwrite". Como el
+      # objetivo explícito de este playbook es precisamente reutilizar /dev/sdb
+      # como partición de datos de alumnos, forzar aquí es lo esperado.
+      # Es seguro para relanzamientos futuros: si /dev/sdb1 YA es ext4 (p. ej.
+      # en una segunda pasada), el módulo lo detecta y no vuelve a formatear
+      # aunque force esté a true -- force solo entra en juego cuando el tipo
+      # de sistema de ficheros actual es DISTINTO del pedido.
       filesystem:
         fstype: ext4
         dev: /dev/sdb1
         opts: -L DATOS
+        force: true
 
     - name: 4. Configurar punto de montaje permanente en /mnt/datos
       mount:
