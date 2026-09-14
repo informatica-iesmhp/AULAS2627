@@ -1,0 +1,167 @@
+---
+# 05_migrar_datos_zfs.yml
+#
+# Migra el segundo disco del equipo a un pool ZFS montado en /datos, con
+# los datasets "iso" y "plantillas" dentro.
+#
+# CONTEMPLA CUALQUIER ESTADO DE PARTIDA del segundo disco:
+#   - ya tiene /datos en ext4 (el playbook del compañero ya se ejecutó ahí)
+#     -> se hace backup, se reformatea y se restaura el contenido.
+#   - tiene particiones viejas de Windows, o cualquier otra cosa, sin
+#     montar en ningún sitio -> se borran sin más (no hay nada fiable que
+#     conservar) y se crea el pool directamente.
+#   - viene totalmente sin particionar -> igual que el caso anterior.
+#
+# El disco "correcto" no se identifica mirando qué hay montado en /datos
+# (que puede no existir todavía), sino por descarte: es el disco físico
+# que NO contiene la partición raíz (/). Como cada equipo de aula tiene
+# exactamente dos discos, esto es fiable en las cuatro aulas sin
+# necesidad de indicar a mano qué disco es cada uno.
+#
+# Por seguridad, si en algún equipo hubiera más o menos de un "segundo
+# disco" candidato (por ejemplo, un USB conectado, o un equipo con más
+# discos de los esperados), el playbook falla explícitamente en vez de
+# adivinar y arriesgarse a borrar el disco equivocado.
+#
+# USO RECOMENDADO: primero en un equipo de prueba por cada perfil de aula
+# (uno con disco mecánico y uno de IF04), con --limit, antes de lanzarlo
+# a un aula entera. Es idempotente: si ya existe el pool "datos", no hace
+# nada.
+
+- name: Migrar el segundo disco a ZFS (/datos)
+  hosts: aula
+  become: true
+
+  vars:
+    datos_backup_dir: /root/datos-backup-temp
+
+  tasks:
+
+    - name: Comprobar si el pool "datos" ya existe (idempotencia)
+      ansible.builtin.command: zpool list -H -o name datos
+      register: pool_datos
+      changed_when: false
+      failed_when: false
+
+    - name: Saltar el resto de tareas si ya está migrado
+      ansible.builtin.meta: end_host
+      when: pool_datos.rc == 0
+
+    - name: Instalar zfsutils-linux y gdisk (para sgdisk)
+      ansible.builtin.apt:
+        name:
+          - zfsutils-linux
+          - gdisk
+        state: present
+        update_cache: true
+
+    - name: Asegurar que los servicios de ZFS están habilitados
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+      loop:
+        - zfs-import-cache
+        - zfs-mount
+        - zfs.target
+
+    - name: Averiguar el disco que contiene la partición raíz (/)
+      ansible.builtin.shell: |
+        set -o pipefail
+        lsblk -no PKNAME "$(findmnt -no SOURCE /)"
+      args:
+        executable: /bin/bash
+      register: disco_sistema
+      changed_when: false
+
+    - name: Averiguar todos los discos físicos del equipo
+      ansible.builtin.command: lsblk -dno NAME
+      register: discos_todos
+      changed_when: false
+
+    - name: Calcular cuál es "el segundo disco" (el que no es el de sistema)
+      ansible.builtin.set_fact:
+        disco2_candidatos: "{{ discos_todos.stdout_lines | reject('equalto', disco_sistema.stdout) | list }}"
+
+    - name: Parar si no hay exactamente un segundo disco candidato
+      ansible.builtin.fail:
+        msg: >
+          Se esperaba encontrar exactamente 1 disco distinto al de sistema
+          y se han encontrado {{ disco2_candidatos | length }}:
+          {{ disco2_candidatos }}. Revisar a mano antes de continuar —
+          no se toca ningún disco.
+      when: disco2_candidatos | length != 1
+
+    - name: Fijar el nombre del segundo disco
+      ansible.builtin.set_fact:
+        disco2: "{{ disco2_candidatos[0] }}"
+
+    - name: Avisar de qué disco se va a reformatear
+      ansible.builtin.debug:
+        msg: "Se va a borrar y reformatear como ZFS el disco completo: /dev/{{ disco2 }}"
+
+    - name: Comprobar si ese disco ya está montado en /datos (ext4 del playbook anterior)
+      ansible.builtin.command: findmnt -no SOURCE /datos
+      register: datos_montado
+      changed_when: false
+      failed_when: false
+
+    - name: Backup de lo que ya haya en /datos, si está montado
+      ansible.builtin.command: "cp -a /datos/. {{ datos_backup_dir }}/"
+      args:
+        creates: "{{ datos_backup_dir }}"
+      when: datos_montado.rc == 0
+
+    - name: Desmontar /datos, si está montado
+      ansible.posix.mount:
+        path: /datos
+        state: unmounted
+      when: datos_montado.rc == 0
+
+    - name: Borrar la tabla de particiones del disco completo (Windows, ext4, o virgen)
+      ansible.builtin.command: "sgdisk --zap-all /dev/{{ disco2 }}"
+
+    - name: Limpiar cualquier firma de sistema de ficheros residual
+      ansible.builtin.command: "wipefs -a /dev/{{ disco2 }}"
+
+    - name: Crear el pool ZFS sobre el disco entero
+      ansible.builtin.command: >
+        zpool create -o ashift=12 -m /datos datos /dev/{{ disco2 }}
+      args:
+        creates: /datos/.zfs
+
+    - name: Activar compresión lz4 en todo el pool
+      ansible.builtin.command: zfs set compression=lz4 datos
+
+    - name: Crear los datasets de iso y plantillas
+      ansible.builtin.command: "zfs create datos/{{ item }}"
+      loop:
+        - iso
+        - plantillas
+      register: ds_result
+      failed_when: ds_result.rc != 0 and 'already exists' not in ds_result.stderr
+      changed_when: ds_result.rc == 0
+
+    - name: Restaurar el contenido original dentro de /datos, si había backup
+      ansible.builtin.command: "cp -a {{ datos_backup_dir }}/. /datos/"
+      when: datos_montado.rc == 0
+
+    - name: Quitar la entrada antigua de /datos en /etc/fstab, si existía
+      ansible.posix.mount:
+        path: /datos
+        state: absent_from_fstab
+      when: datos_montado.rc == 0
+
+    - name: Limpiar el backup temporal, si se hizo
+      ansible.builtin.file:
+        path: "{{ datos_backup_dir }}"
+        state: absent
+      when: datos_montado.rc == 0
+
+    - name: Verificación final
+      ansible.builtin.command: zfs list -r datos
+      register: datos_final
+      changed_when: false
+
+    - name: Mostrar resultado
+      ansible.builtin.debug:
+        var: datos_final.stdout_lines

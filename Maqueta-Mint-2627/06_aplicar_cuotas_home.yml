@@ -1,0 +1,74 @@
+---
+# 06_aplicar_cuotas_home.yml
+#
+# Aplica una cuota de disco ZFS (userquota) a cada alumno cuyo perfil vive
+# en /home (que a estas alturas ya debe ser el dataset ZFS rpool_home,
+# creado por 04_migrar_home_zfs.yml). No toca a depinfo ni a ansible-admin.
+#
+# Detecta solo, en cada momento, los alumnos que YA han iniciado sesión al
+# menos una vez en ese equipo (porque solo esos tienen carpeta en /home).
+# Es seguro relanzarlo periódicamente (p. ej. una vez a la semana, o al
+# empezar cada módulo) para ir aplicando cuota a los alumnos nuevos que
+# vayan entrando; a los que ya la tenían no les cambia nada si no ha
+# cambiado la variable.
+#
+# USO:
+#   Cuota igual para todos:
+#     ansible-playbook -i inventarios/if01.ini 06_aplicar_cuotas_home.yml \
+#         -e cuota_por_defecto=20G
+#
+#   Cuota distinta para algún alumno concreto (por ejemplo, un módulo que
+#   necesita más VMs), en un fichero de variables aparte:
+#     ansible-playbook -i inventarios/if01.ini 06_aplicar_cuotas_home.yml \
+#         -e @cuotas_especiales.yml
+#
+#   cuotas_especiales.yml tendría este aspecto:
+#     alumnos_cuota:
+#       ana.garcia: 35G
+#       pedro.lopez: 35G
+
+- name: Aplicar cuotas ZFS por alumno en /home
+  hosts: aula
+  become: true
+
+  vars:
+    cuota_por_defecto: 20G
+    alumnos_cuota: {}
+    usuarios_excluidos:
+      - depinfo
+      - ansible-admin
+
+  tasks:
+
+    - name: Comprobar que /home es ZFS antes de continuar
+      ansible.builtin.command: findmnt -no FSTYPE /home
+      register: home_fstype
+      changed_when: false
+      failed_when: home_fstype.stdout != "zfs"
+
+    - name: Detectar alumnos con carpeta propia en /home
+      ansible.builtin.shell: |
+        set -o pipefail
+        getent passwd | awk -F: '$6 ~ /^\/home\// {print $1}'
+      args:
+        executable: /bin/bash
+      register: usuarios_home
+      changed_when: false
+
+    - name: Calcular la lista final de alumnos (excluyendo cuentas de sistema)
+      ansible.builtin.set_fact:
+        alumnos_detectados: "{{ usuarios_home.stdout_lines | difference(usuarios_excluidos) }}"
+
+    - name: Aplicar cuota a cada alumno detectado
+      ansible.builtin.command: >
+        zfs set userquota@{{ item }}={{ alumnos_cuota[item] | default(cuota_por_defecto) }} rpool_home
+      loop: "{{ alumnos_detectados }}"
+
+    - name: Mostrar uso y cuota actual por usuario
+      ansible.builtin.command: zfs userspace rpool_home
+      register: uso_actual
+      changed_when: false
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: uso_actual.stdout_lines

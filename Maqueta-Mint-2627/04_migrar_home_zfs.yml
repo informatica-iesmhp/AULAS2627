@@ -1,0 +1,115 @@
+---
+# 04_migrar_home_zfs.yml
+#
+# Migra /home de ext4 a ZFS en un equipo de aula ya clonado con la maqueta
+# Mint 22.3. NO toca la partición raíz (/), que se queda en ext4 tal cual.
+#
+# REQUISITO PREVIO IMPORTANTE:
+#   Ansible usa por defecto un directorio temporal dentro del $HOME del
+#   usuario de conexión (aquí, ansible-admin -> /home/ansible-admin). Como
+#   este playbook desmonta /home a mitad de ejecución, hay que sacar ese
+#   temporal de ahí ANTES de lanzarlo, o el propio Ansible se corta el
+#   césped a sí mismo. Añadir en el inventario o en group_vars/all.yml:
+#
+#     ansible_remote_tmp: /tmp/.ansible-remote
+#
+# USO RECOMENDADO:
+#   1. Probar primero en un único equipo:
+#        ansible-playbook -i inventarios/if01.ini 04_migrar_home_zfs.yml \
+#            --limit if01-05 -u ansible-admin
+#   2. Comprobar que ansible-admin sigue conectando por clave SSH sin
+#      --ask-pass antes de extenderlo al resto del aula.
+#
+# Es idempotente: si /home ya es ZFS, no hace nada.
+
+- name: Migrar /home de ext4 a ZFS
+  hosts: aula
+  become: true
+
+  vars:
+    home_backup_dir: /root/home-backup-temp
+
+  tasks:
+
+    - name: Comprobar si /home ya es ZFS (idempotencia)
+      ansible.builtin.command: findmnt -no FSTYPE /home
+      register: home_fstype
+      changed_when: false
+
+    - name: Saltar el resto de tareas si /home ya está migrado
+      ansible.builtin.meta: end_host
+      when: home_fstype.stdout == "zfs"
+
+    - name: Instalar zfsutils-linux
+      ansible.builtin.apt:
+        name: zfsutils-linux
+        state: present
+        update_cache: true
+
+    - name: Asegurar que los servicios de ZFS están habilitados
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+      loop:
+        - zfs-import-cache
+        - zfs-mount
+        - zfs.target
+
+    - name: Localizar la partición actual de /home
+      ansible.builtin.command: findmnt -no SOURCE /home
+      register: home_device
+      changed_when: false
+
+    - name: Avisar de qué partición se va a reformatear
+      ansible.builtin.debug:
+        msg: "Se va a borrar y reformatear como ZFS: {{ home_device.stdout }}"
+
+    - name: Backup de lo que haya en /home (depinfo, ansible-admin, alumnos si los hubiera)
+      ansible.builtin.command: "cp -a /home/. {{ home_backup_dir }}/"
+      args:
+        creates: "{{ home_backup_dir }}"
+
+    - name: Comprobar que el backup no está vacío antes de continuar
+      ansible.builtin.find:
+        paths: "{{ home_backup_dir }}"
+      register: backup_check
+      failed_when: backup_check.matched == 0
+
+    - name: Desmontar /home
+      ansible.posix.mount:
+        path: /home
+        state: unmounted
+
+    - name: Borrar el sistema de ficheros anterior de esa partición
+      ansible.builtin.command: "wipefs -a {{ home_device.stdout }}"
+
+    - name: Crear el pool ZFS sobre esa misma partición
+      ansible.builtin.command: >
+        zpool create -o ashift=12 -m /home rpool_home {{ home_device.stdout }}
+      args:
+        creates: /home/.zfs
+
+    - name: Activar compresión lz4
+      ansible.builtin.command: zfs set compression=lz4 rpool_home
+
+    - name: Restaurar el contenido original dentro de /home
+      ansible.builtin.command: "cp -a {{ home_backup_dir }}/. /home/"
+
+    - name: Quitar la entrada antigua de /home en /etc/fstab
+      ansible.posix.mount:
+        path: /home
+        state: absent_from_fstab
+
+    - name: Limpiar el backup temporal
+      ansible.builtin.file:
+        path: "{{ home_backup_dir }}"
+        state: absent
+
+    - name: Verificación final
+      ansible.builtin.command: findmnt -no FSTYPE,SOURCE /home
+      register: home_final
+      changed_when: false
+
+    - name: Mostrar resultado
+      ansible.builtin.debug:
+        msg: "/home ahora es: {{ home_final.stdout }}"
