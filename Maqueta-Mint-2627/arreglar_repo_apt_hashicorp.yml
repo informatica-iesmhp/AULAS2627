@@ -1,0 +1,120 @@
+---
+# arreglar_repo_apt_hashicorp.yml
+# ---------------------------------------------------------------------------
+# Arregla el fallo "Failed to update apt cache: unknown reason" que da
+# Ansible (visto por primera vez el 14/09 en IF03-01, playbook
+# 04_discos-ext4.yml) y que en realidad es un repositorio de terceros roto,
+# heredado de la maqueta antes de clonar:
+#
+#   El repositorio de HashiCorp (https://apt.releases.hashicorp.com),
+#   probablemente añadido al montar la maqueta para tener Terraform/Vault a
+#   mano en las clases de IaC, tiene la clave GPG no disponible
+#   (NO_PUBKEY). `apt-get` a pelo solo avisa (W:) y sigue con el resto, pero
+#   el módulo `apt` de Ansible usa python-apt por debajo, que SÍ aborta la
+#   actualización de caché entera si cualquier repo falla la verificación
+#   GPG. De ahí el mensaje genérico sin detalle.
+#
+# Como viene de la maqueta, no es solo cosa de IF03-01: es de esperar que
+# aparezca en cualquier equipo de cualquier aula (mismo patrón que el
+# hostname/SSH/dominio) en cuanto un playbook necesite `apt update`.
+#
+# Qué hace este playbook (por equipo, sin tocar nada más):
+#   1. Busca cualquier fichero en /etc/apt/sources.list.d/ que mencione
+#      apt.releases.hashicorp.com (no asume un nombre de fichero fijo, por
+#      si algún clon lo tiene guardado con otro nombre).
+#   2. Lo elimina.
+#   3. Elimina también el llavero asociado si existe
+#      (/usr/share/keyrings/hashicorp-archive-keyring.gpg), para no dejar
+#      basura suelta.
+#   4. Actualiza la caché de apt y confirma que queda limpia (sin el
+#      NO_PUBKEY).
+#
+# Es idempotente y NO destructivo para nada del sistema de alumnos: solo
+# quita un fichero de configuración de repositorio y su llave, no borra
+# paquetes ya instalados ni toca datos. Si un equipo no tenía el repo (ya
+# arreglado, o nunca lo tuvo), el playbook no hace nada en él.
+#
+# ---------------------------------------------------------------------------
+# Uso:
+#
+#   cd ~/ansible-aulas
+#   ansible-playbook -i inventarios/IF03.ini playbooks/arreglar_repo_apt_hashicorp.yml -u ansible-admin
+#
+# (cambia IF03.ini por el inventario del aula que toque). No hace falta
+# --limit ni variables extra: es seguro lanzarlo contra el aula entera de
+# una vez.
+#
+# Después, relanza el playbook que te había fallado, por ejemplo:
+#
+#   ansible-playbook -i inventarios/IF03.ini playbooks/04_discos-ext4.yml -u ansible-admin
+#
+# Verificación manual en un equipo si quieres comprobarlo a mano:
+#
+#   ssh ansible-admin@<ip_del_equipo> "sudo apt update"
+#
+# ya no debería salir ningún Err ni W: de apt.releases.hashicorp.com.
+#
+# Nota: si en algún momento SÍ hace falta ese repo en algún equipo (p. ej.
+# vuestro propio PC de profesor, para instalar Terraform), no lo seguéis
+# este playbook contra ese equipo (usad --limit para excluirlo) y en su
+# lugar reimportad la clave a mano:
+#
+#   wget -qO- https://apt.releases.hashicorp.com/gpg | \
+#     sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+#   sudo apt update
+# ---------------------------------------------------------------------------
+
+- name: Quitar el repositorio de HashiCorp roto (heredado de la maqueta) y dejar apt limpio
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Buscar ficheros de repos en sources.list.d que mencionen apt.releases.hashicorp.com
+      ansible.builtin.command:
+        cmd: grep -rl 'apt.releases.hashicorp.com' /etc/apt/sources.list.d/
+      register: repos_hashicorp
+      changed_when: false
+      failed_when: false
+
+    - name: Informar si este equipo no tiene el repo (nada que hacer)
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: no tiene el repo de HashiCorp configurado. No se toca nada."
+      when: repos_hashicorp.stdout_lines | default([]) | length == 0
+
+    - name: Eliminar cada fichero de repo de HashiCorp encontrado
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ repos_hashicorp.stdout_lines | default([]) }}"
+      register: repo_eliminado
+
+    - name: Eliminar el llavero asociado si existe
+      ansible.builtin.file:
+        path: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+        state: absent
+      when: repos_hashicorp.stdout_lines | default([]) | length > 0
+
+    - name: Actualizar la caché de apt tras limpiar el repo
+      ansible.builtin.apt:
+        update_cache: true
+      when: repos_hashicorp.stdout_lines | default([]) | length > 0
+      register: apt_update_resultado
+
+    - name: Confirmar que ha quedado limpio
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: repo de HashiCorp eliminado y apt update OK."
+      when: repos_hashicorp.stdout_lines | default([]) | length > 0
+
+- name: Aviso final
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Recordatorio
+      ansible.builtin.debug:
+        msg: >-
+          Hecho. Si algún equipo seguía dando problemas de apt por otro
+          motivo (no HashiCorp), este playbook no lo tapa -- revísalo aparte.
+          Ya puedes relanzar el playbook que te había fallado (p. ej.
+          04_discos-ext4.yml).

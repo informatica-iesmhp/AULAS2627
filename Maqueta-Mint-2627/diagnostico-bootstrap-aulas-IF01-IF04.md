@@ -233,6 +233,27 @@ Repetir para cada aula/inventario (`IF02.ini`, etc.) cuando llegue el momento �
 
 ---
 
+### 6. `apt update` falla con "unknown reason" -- repositorio de HashiCorp roto, heredado de la maqueta
+
+Visto el 14/09 en IF03-01 al lanzar `04_discos-ext4.yml`: la primera tarea del playbook (asegurar herramientas de particionado/ext4) falla con `"msg": "Failed to update apt cache: unknown reason"`, sin más detalle.
+
+Causa real (solo visible lanzando `apt update` a mano en el equipo): el repositorio de HashiCorp (`https://apt.releases.hashicorp.com`), probablemente añadido al montar la maqueta para tener Terraform/Vault a mano en las clases de IaC, tiene la clave GPG no disponible (`NO_PUBKEY FC9CA96ACA026560`). `apt-get` a pelo solo avisa (`W:`) de ese repo concreto y sigue con el resto; pero el módulo `apt` de Ansible usa `python-apt` por debajo, que es más estricto y aborta la actualización de caché **entera** si cualquier repo falla la verificación GPG -- de ahí el mensaje genérico sin detalle real.
+
+Como viene de la maqueta (no es una configuración que se haya tocado tras clonar), es de esperar que aparezca en **cualquier equipo de cualquier aula**, no solo IF03-01 -- mismo patrón que el hostname/SSH/dominio: algo heredado del clonado que hay que arreglar en cada aula la primera vez que un playbook necesite `apt update` allí.
+
+**Decisión (14/09):** en vez de reimportar la clave GPG (que solo pospone el problema si vuelve a caducar o rotar), se opta por **eliminar el repo** -- no hace falta HashiCorp en los equipos de alumnos, solo lo necesitaría el profesor en su propio equipo si acaso.
+
+**Arreglo:** playbook `arreglar_repo_apt_hashicorp.yml` (entregado el 14/09, pendiente de subir al repo). Busca cualquier fichero en `/etc/apt/sources.list.d/` que mencione `apt.releases.hashicorp.com` (no asume un nombre fijo), lo elimina junto con su llavero, y deja `apt update` limpio. Idempotente y seguro de lanzar contra el aula entera de golpe:
+```bash
+cd ~/ansible-aulas
+ansible-playbook -i inventarios/IF03.ini playbooks/arreglar_repo_apt_hashicorp.yml -u ansible-admin
+```
+Después, relanzar el playbook que había fallado (`04_discos-ext4.yml` u otro que necesite `apt`).
+
+Pendiente: confirmar en IF03 que tras aplicarlo `04_discos-ext4.yml` termina bien, y comprobar lo mismo preventivamente en IF04 antes de empezar allí (para no toparse otra vez con el mismo bloqueo a mitad de despliegue).
+
+---
+
 ## Notas / supuestos a verificar
 
 - ~~Sudo de `ansible-admin`~~ — **Confirmado** (`preparaclienteansibleadmin.sh`): `NOPASSWD:ALL`, contraseña SSH temporal `AulaAnsible2026`. No hace falta `--ask-become-pass`.
