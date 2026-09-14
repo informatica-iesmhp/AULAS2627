@@ -614,6 +614,12 @@ cada ejecución, no se amplía sola.
   done
   ansible-playbook -i inventarios/aula1.ini playbooks/02_harden_ssh.yml -u ansible-admin
   ```
+  Importante: **cada PC de profesor tiene su propio `~/.ssh/known_hosts`**
+  (son equipos clonados distintos) — arreglarlo en el control node de un
+  aula no arregla el de otra. Hay que aplicar este mismo bucle la primera
+  vez que se llega al paso 2 en cada aula nueva. Confirmado que se repite:
+  visto también en IF03 (14/09/2026), esta vez con una entrada previa de
+  tipo ECDSA en vez de ED25519 — la causa de fondo es la misma.
 - **"REMOTE HOST IDENTIFICATION HAS CHANGED"** al conectar a mano con
   `ssh`: es esperado la primera vez tras el paso 0 (la clave de host
   cambió de verdad, a propósito). Bórralo de tu `known_hosts` solo la

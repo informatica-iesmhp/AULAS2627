@@ -229,6 +229,8 @@ Repetir para cada aula/inventario (`IF02.ini`, etc.) cuando llegue el momento �
 
 **Confirmado que se repite (14/09, en IF03):** mismo síntoma exacto (`REMOTE HOST IDENTIFICATION HAS CHANGED`, esta vez con un tipo de clave distinto — ECDSA guardado vs. ED25519 real), esta vez en `IF03-00` al lanzar `02_harden_ssh.yml`. Importante: **cada PC de profesor tiene su propio `~/.ssh/known_hosts`** (es una máquina distinta, clonada aparte) — arreglar esto en el control node de IF01 **no** arregla el de IF02 ni el de IF03; hay que aplicar el mismo arreglo (los dos bucles `ssh-keygen -R` + `ssh-keyscan`) en cada aula, la primera vez que se llega a `02_harden_ssh.yml` allí. Copiar la clave pública a mano por USB (se probó en IF03) no toca este problema — el fallo no es que falte la clave en el cliente (esa parte, pasos 00/01, ya había ido bien), es que el `known_hosts` del *propio* control node tiene una entrada vieja/de otro tipo para esa IP.
 
+**Ya documentado en el README oficial (14/09):** este arreglo (el bloque de verificación corregido en la Fase 2, y la nota de que cada PC de profesor tiene su propio `known_hosts` con la confirmación de IF03) ha quedado incorporado en `Maqueta-Mint-2627/00_despliegue_aula_README.md`, tanto en el aviso de verificación como en "Notas / problemas típicos". A partir de ahora, para IF04 (o cualquier aula nueva), basta con seguir el README tal cual — ya no hace falta volver a este documento para este problema concreto; se deja aquí como registro histórico de cómo se detectó y depuró.
+
 ---
 
 ## Notas / supuestos a verificar
