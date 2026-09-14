@@ -1,0 +1,46 @@
+---
+# =============================================================================
+# Playbook: Apagado seguro de equipos
+# Descripción: Apaga los equipos del grupo indicado SOLO si no hay usuarios
+#              reales conectados (SSH o escritorio remoto / VNC / RDP).
+#              Excluye ansibleadmin y procesos del sistema (lightdm, gdm, sddm).
+# Uso: ansible-playbook shutdown_if_empty.yml -i inventario_aula.ini -l aula --ask-become-pass
+# =============================================================================
+
+- name: Apagado seguro de equipos sin usuarios conectados
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+
+    - name: Detectar usuarios reales conectados
+      ansible.builtin.shell: |
+        loginctl list-sessions --no-legend --no-pager 2>/dev/null \
+          | awk '{print $3}' \
+          | grep -vE '^(ansibleadmin|lightdm|gdm|sddm|root)$' \
+          | sort -u
+      register: usuarios_reales
+      changed_when: false
+
+    - name: "AVISO - Equipo ocupado, no se apagará"
+      ansible.builtin.debug:
+        msg: >-
+          ⚠  {{ inventory_hostname }} tiene usuarios conectados
+          y NO será apagado → {{ usuarios_reales.stdout_lines | join(', ') }}
+      when: usuarios_reales.stdout | trim != ""
+
+    # async: 1 + poll: 0 — Ansible lanza el comando y no espera respuesta
+    # Evita el error de conexión rota cuando el equipo se apaga
+    - name: Apagar equipo
+      ansible.builtin.command: /sbin/shutdown -h now
+      when: usuarios_reales.stdout | trim == ""
+      async: 1
+      poll: 0
+      changed_when: true
+
+    - name: Confirmar apagado iniciado
+      ansible.builtin.debug:
+        msg: "✔ {{ inventory_hostname }} — apagado iniciado."
+      when: usuarios_reales.stdout | trim == ""
+
