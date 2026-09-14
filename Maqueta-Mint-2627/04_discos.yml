@@ -1,0 +1,43 @@
+---
+- name: Formatear /dev/sdb a EXT4 y dar acceso de escritura a alumnos
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: 1. Asegurar que están instaladas las herramientas de particionado y ext4
+      apt:
+        name:
+          - parted
+          - gdisk
+          - e2fsprogs
+        state: present
+        update_cache: yes
+
+    - name: 2. Crear tabla de particiones GPT y partición única en /dev/sdb
+      parted:
+        device: /dev/sdb
+        label: gpt
+        number: 1
+        state: present
+        fs_type: ext4
+
+    - name: 3. Formatear /dev/sdb1 en EXT4 con la etiqueta DATOS
+      filesystem:
+        fstype: ext4
+        dev: /dev/sdb1
+        opts: -L DATOS
+
+    - name: 4. Configurar punto de montaje permanente en /mnt/datos
+      mount:
+        path: /datos
+        src: /dev/sdb1
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: 5. Garantizar permisos de lectura y escritura para todos los usuarios (alumnos)
+      file:
+        path: /datos
+        state: directory
+        mode: '0777'
+

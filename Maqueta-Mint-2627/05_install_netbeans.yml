@@ -1,0 +1,64 @@
+---
+- name: Instalar Java JDK, descargar y desplegar Apache NetBeans
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: 1. Instalar OpenJDK y la herramienta unzip
+      apt:
+        name:
+          - default-jdk
+          - unzip
+        state: present
+        update_cache: no
+
+    - name: 2. Descargar el ejecutable ZIP de Apache NetBeans 31
+      get_url:
+        url: "https://www.apache.org/dyn/closer.lua/netbeans/netbeans/31/netbeans-31-bin.zip?action=download"
+        dest: /tmp/netbeans-31-bin.zip
+        mode: '0644'
+        timeout: 60
+
+    - name: 3. Descomprimir NetBeans en /opt/
+      unarchive:
+        src: /tmp/netbeans-31-bin.zip
+        dest: /opt/
+        remote_src: yes
+        creates: /opt/netbeans/bin/netbeans
+
+    - name: 4. Ajustar permisos globales y crear enlace simbólico en /usr/local/bin
+      file:
+        path: /opt/netbeans/bin/netbeans
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: 4b. Enlazar ejecutable en el PATH global del sistema
+      file:
+        src: /opt/netbeans/bin/netbeans
+        dest: /usr/local/bin/netbeans
+        state: link
+
+    - name: 5. Descargar icono de NetBeans
+      get_url:
+        url: "https://netbeans.apache.org/_/images/touch-icon-iphone-retina.png"
+        dest: /usr/share/pixmaps/netbeans.png
+        mode: '0644'
+
+    - name: 6. Crear acceso directo en el menú de inicio
+      copy:
+        dest: /usr/share/applications/netbeans.desktop
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Desktop Entry]
+          Type=Application
+          Name=NetBeans IDE
+          Comment=Entorno de desarrollo integrado Apache NetBeans
+          Exec=/usr/local/bin/netbeans
+          Icon=/usr/share/pixmaps/netbeans.png
+          Terminal=false
+          Categories=Development;IDE;Java;
+          StartupNotify=true
+
