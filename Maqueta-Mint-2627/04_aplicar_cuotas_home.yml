@@ -1,4 +1,4 @@
----
+--- 
 # 06_aplicar_cuotas_home.yml
 #
 # Aplica una cuota de disco ZFS (userquota) a cada alumno cuyo perfil vive
