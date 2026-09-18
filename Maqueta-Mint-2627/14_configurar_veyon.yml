@@ -1,0 +1,153 @@
+---
+# 10_configurar_veyon.yml
+#
+# Configura Veyon en un aula (Master en el equipo del profesor, Service
+# en los equipos de alumnos) con autenticación por clave (key file),
+# sin depender del dominio ni de LDAP/AD.
+#
+# Requiere: paquete `veyon` ya instalado en todos los equipos (según lo
+# confirmado en la maqueta). Este playbook NO instala Veyon, solo lo
+# configura.
+#
+# Asunción de nombres: el equipo de profesor de cada aula termina en
+# "-00" (IF01-00, IF02-00...) y el resto son alumnos — el mismo criterio
+# que usa macs.csv. Si algún día cambia ese criterio, hay que ajustar
+# los patrones "*-00" / "all:!*-00" de las dos jugadas de abajo.
+#
+# Firewall: no se toca (está desactivado en la maqueta actual). Si en
+# algún momento se activa un firewall en el aula, hay que abrir el
+# puerto de Veyon (por defecto 11100/TCP, confirmar con
+# "veyon-cli config get Network/VeyonServerPort") para la subred de esa
+# aula — ver playbook-configurar-veyon-IF01-IF04.md, sección "Pendiente".
+#
+# Uso:
+#   ansible-playbook -i inventarios/if01.ini playbooks/10_configurar_veyon.yml -u ansible-admin
+#
+# Probar primero en un equipo, como el resto de playbooks del proyecto:
+#   ansible-playbook -i inventarios/if01.ini playbooks/10_configurar_veyon.yml -u ansible-admin --limit IF01-05
+#   (para la primera jugada hace falta el profesor, así que en la práctica
+#   se prueba lanzando el playbook completo la primera vez, sin --limit,
+#   contra un aula que sirva de piloto)
+
+- name: Configurar Veyon Master y clave en el equipo del profesor
+  hosts: "*-00"
+  become: true
+  vars:
+    veyon_key_name: profesor
+    veyon_pubkey_local: "{{ playbook_dir }}/../files/veyon/{{ inventory_hostname.split('-')[0] }}-profesor-public.pem"
+    veyon_aula: "{{ inventory_hostname.split('-')[0] }}"   # p.ej. IF01
+
+  tasks:
+    - name: Confirmar que veyon-cli está disponible (Veyon instalado)
+      command: veyon-cli --version
+      changed_when: false
+
+    - name: Crear el par de claves "profesor" si no existe todavía
+      command: "veyon-cli authkeys create {{ veyon_key_name }}"
+      args:
+        creates: "/etc/veyon/keys/private/{{ veyon_key_name }}/key"
+      # Ruta de la clave privada a confirmar en el primer arranque con:
+      #   veyon-cli authkeys list details
+      # y ajustar el "creates:" si el nombre de fichero real es distinto.
+
+    - name: Comprobar el método de autenticación actual
+      command: veyon-cli config get Authentication/Method
+      register: veyon_auth_method_profesor
+      changed_when: false
+
+    - name: Activar autenticación por clave (Authentication/Method = 1)
+      command: veyon-cli config set Authentication/Method 1
+      when: veyon_auth_method_profesor.stdout | trim != "1"
+      notify: reiniciar veyon-service si existe en este equipo
+
+    - name: Exportar la clave pública a un fichero temporal
+      command: "veyon-cli authkeys export {{ veyon_key_name }}/public /tmp/veyon-{{ veyon_key_name }}-public.pem"
+      changed_when: true
+
+    - name: Traer la clave pública al nodo de control
+      fetch:
+        src: "/tmp/veyon-{{ veyon_key_name }}-public.pem"
+        dest: "{{ veyon_pubkey_local }}"
+        flat: true
+
+    - name: Generar el listado de equipos del aula (network objects) desde el inventario
+      template:
+        src: veyon_network_objects.csv.j2
+        dest: /tmp/veyon-network-objects.csv
+        mode: "0644"
+
+    # Reconstruye el directorio de equipos del Master entero en cada
+    # ejecución, para que quede siempre igual al inventario actual.
+    # OJO: si el profesor añade equipos a mano desde la ventana de
+    # Veyon Master, este playbook se los borrará al volver a lanzarse.
+    # Verificar en un equipo real si "networkobjects import" duplica
+    # entradas al repetirse antes de confiar en esto sin el "clear".
+    - name: Vaciar el directorio de equipos del Master antes de reconstruirlo
+      command: veyon-cli networkobjects clear
+      changed_when: true
+
+    - name: Registrar la ubicación (aula) en el directorio de Veyon
+      command: "veyon-cli networkobjects add location {{ veyon_aula }}"
+      changed_when: true
+
+    - name: Importar el listado de equipos del aula en esa ubicación
+      command: >
+        veyon-cli networkobjects import /tmp/veyon-network-objects.csv
+        location {{ veyon_aula }}
+        format "%name%,%host%"
+      changed_when: true
+
+  handlers:
+    - name: reiniciar veyon-service si existe en este equipo
+      systemd:
+        name: veyon-service
+        state: restarted
+      failed_when: false   # el equipo del profesor puede no llevar el servicio (ver decisión en el doc)
+
+
+- name: Distribuir la clave pública e instalar el Service en los equipos de alumnos
+  hosts: "all:!*-00"
+  become: true
+  vars:
+    veyon_key_name: profesor
+    veyon_profesor_host: "{{ (groups['all'] | select('match', '^.*-00$') | list)[0] }}"
+    veyon_pubkey_local: "{{ playbook_dir }}/../files/veyon/{{ veyon_profesor_host.split('-')[0] }}-profesor-public.pem"
+
+  tasks:
+    - name: Confirmar que veyon-cli está disponible (Veyon instalado)
+      command: veyon-cli --version
+      changed_when: false
+
+    - name: Copiar la clave pública del profesor a este equipo
+      copy:
+        src: "{{ veyon_pubkey_local }}"
+        dest: "/tmp/veyon-{{ veyon_key_name }}-public.pem"
+        mode: "0644"
+
+    - name: Importar la clave pública en el Service (si no está ya importada)
+      command: "veyon-cli authkeys import {{ veyon_key_name }}/public /tmp/veyon-{{ veyon_key_name }}-public.pem"
+      args:
+        creates: "/etc/veyon/keys/public/{{ veyon_key_name }}/key"
+      notify: reiniciar veyon-service
+
+    - name: Comprobar el método de autenticación actual
+      command: veyon-cli config get Authentication/Method
+      register: veyon_auth_method_alumno
+      changed_when: false
+
+    - name: Activar autenticación por clave (Authentication/Method = 1)
+      command: veyon-cli config set Authentication/Method 1
+      when: veyon_auth_method_alumno.stdout | trim != "1"
+      notify: reiniciar veyon-service
+
+    - name: Habilitar y arrancar veyon-service
+      systemd:
+        name: veyon-service
+        enabled: true
+        state: started
+
+  handlers:
+    - name: reiniciar veyon-service
+      systemd:
+        name: veyon-service
+        state: restarted

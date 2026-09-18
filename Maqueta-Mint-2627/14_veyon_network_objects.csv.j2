@@ -1,0 +1,14 @@
+{# veyon_network_objects.csv.j2                                          #}
+{# Genera el listado de equipos del aula para "veyon-cli networkobjects  #}
+{# import ... format \"%name%,%host%\"" — una fila por equipo de alumno, #}
+{# excluyendo al propio profesor (que no necesita verse a sí mismo en   #}
+{# la ventana del Master).                                              #}
+{# Usa la IP fija del inventario (ansible_host) en vez del nombre corto #}
+{# del equipo, para no depender de que el DNS del dominio resuelva esos #}
+{# nombres (mismo motivo por el que playbook-wake-on-lan recomienda IP  #}
+{# en vez de nombre para verificar).                                    #}
+{% for h in groups['all'] %}
+{% if h != inventory_hostname %}
+{{ h }},{{ hostvars[h].ansible_host | default(h) }}
+{% endif %}
+{% endfor %}
