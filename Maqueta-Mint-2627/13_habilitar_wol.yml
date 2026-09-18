@@ -1,0 +1,120 @@
+---
+# 09_habilitar_wol.yml
+#
+# Deja el soporte de Wake-on-LAN (WoL) activo a nivel de sistema
+# operativo en cada equipo, para que luego se puedan encender por red
+# con encender_aula.sh. Se aplica a TODOS los equipos del inventario
+# (profesor y alumnos por igual, como 07_actualizaciones_seguridad.yml)
+# — no hace daño tenerlo también en el equipo del profesor, y así se
+# puede encender en remoto igualmente si algún día hace falta.
+#
+# Esto es SOLO la mitad "software" de WoL. La otra mitad, la de la BIOS,
+# no se puede hacer por Ansible (el equipo tiene que estar encendido
+# para que Ansible llegue a él, pero la opción vive en un menú al que
+# solo se accede antes de que arranque el sistema operativo) — hay que
+# entrar a la BIOS/UEFI de cada equipo A MANO, una vez, y activar
+# "Wake on LAN" / "Power On by PCI-E" / "Resume by PCIe Device" (el
+# nombre exacto varía según el fabricante de la placa).
+#
+# Uso:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/09_habilitar_wol.yml -u ansible-admin
+#
+# Probar primero en un equipo:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/09_habilitar_wol.yml \
+#       -u ansible-admin --limit IF01-05
+
+- name: Habilitar Wake-on-LAN a nivel de sistema operativo
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Avisar si el equipo no tiene una interfaz de red por defecto detectable
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} no tiene ansible_default_ipv4 (¿solo
+          WiFi, o sin cable conectado ahora mismo?) — se salta este
+          equipo, WoL normalmente solo aplica a la red cableada.
+      when: ansible_default_ipv4 is not defined or ansible_default_ipv4.interface is not defined
+
+    - name: Instalar ethtool
+      ansible.builtin.apt:
+        name: ethtool
+        state: present
+        update_cache: false
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+    - name: Comprobar el estado actual de Wake-on-LAN en la interfaz
+      ansible.builtin.command: "ethtool {{ ansible_default_ipv4.interface }}"
+      register: ethtool_estado
+      changed_when: false
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+    - name: Activar Wake-on-LAN (magic packet) ya mismo, en caliente
+      ansible.builtin.command: "ethtool -s {{ ansible_default_ipv4.interface }} wol g"
+      when:
+        - ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+        - "'Wake-on: g' not in ethtool_estado.stdout"
+      changed_when: true
+
+    - name: Desplegar script que reaplica WoL en cada arranque
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/habilitar-wol.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          # Reaplica Wake-on-LAN (magic packet) en la interfaz de red por
+          # defecto. Necesario porque la mayoría de tarjetas de red
+          # vuelven a su estado por defecto (WoL desactivado) en cada
+          # arranque, aunque la BIOS lo tenga activado — desplegado por
+          # 09_habilitar_wol.yml, no editar a mano.
+          set -e
+          IFACE=$(ip route show default | awk '/default/ {print $5; exit}')
+          if [ -n "$IFACE" ]; then
+              /sbin/ethtool -s "$IFACE" wol g || true
+          fi
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+    - name: Desplegar el servicio systemd que lanza el script al arrancar
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/wol-enable.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Reaplicar Wake-on-LAN en la interfaz de red por defecto
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/habilitar-wol.sh
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+      notify: recargar systemd
+
+    - name: Habilitar y arrancar el servicio wol-enable
+      ansible.builtin.systemd:
+        name: wol-enable.service
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+    - name: Mostrar el estado final de Wake-on-LAN (para comprobar a ojo)
+      ansible.builtin.command: "ethtool {{ ansible_default_ipv4.interface }}"
+      register: ethtool_final
+      changed_when: false
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+    - name: Línea "Wake-on" tal cual queda en el equipo
+      ansible.builtin.debug:
+        msg: "{{ ethtool_final.stdout_lines | select('search', 'Wake-on') | list }}"
+      when: ansible_default_ipv4 is defined and ansible_default_ipv4.interface is defined
+
+  handlers:
+    - name: recargar systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
