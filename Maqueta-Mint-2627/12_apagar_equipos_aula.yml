@@ -1,0 +1,104 @@
+---
+# 08_apagar_equipos_aula.yml
+#
+# Apaga los equipos del aula EXCEPTO el del profesor. Dos modos, elegidos
+# con -e modo_apagado=todos|inactivos (obligatorio, sin valor por defecto
+# a propósito, igual que confirmar_apagado y profesor_host):
+#
+#   modo_apagado=todos      -> apaga todos los equipos de alumnos, tengan
+#                               o no una sesión iniciada en este momento.
+#   modo_apagado=inactivos  -> apaga solo los equipos donde AHORA MISMO
+#                               no hay ninguna sesión de usuario iniciada
+#                               (ni gráfica en el escritorio, ni de otro
+#                               tipo). Los equipos con alguien conectado
+#                               se dejan encendidos, sin tocarlos.
+#
+# Variables obligatorias (sin default, para no apagar el aula equivocada
+# ni disparar esto sin querer):
+#   profesor_host      p.ej. IF01-00 — el equipo que NUNCA se apaga.
+#   modo_apagado        'todos' o 'inactivos'.
+#   confirmar_apagado   true — gatillo explícito, igual que
+#                        confirmar_reunion en 03_reunir_dominio.yml.
+#
+# Variable opcional:
+#   retraso_segundos    segundos de margen antes de apagar de verdad
+#                        (por defecto 60) — tiempo para que quien tenga
+#                        algo abierto en pantalla vea el aviso y guarde.
+#
+# Ejemplos:
+#   # Apagar TODO el aula IF01 menos el equipo del profesor, ya mismo:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/08_apagar_equipos_aula.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e modo_apagado=todos \
+#       -e confirmar_apagado=true
+#
+#   # Apagar solo los equipos de IF02 sin sesión iniciada (p.ej. al acabar
+#   # el turno de tarde, para no cortar a quien se ha quedado trabajando):
+#   ansible-playbook -i inventarios/IF02.ini playbooks/08_apagar_equipos_aula.yml \
+#       -u ansible-admin -e profesor_host=IF02-00 -e modo_apagado=inactivos \
+#       -e confirmar_apagado=true
+#
+#   # Simulacro sin apagar nada de verdad (Ansible --check):
+#   ansible-playbook -i inventarios/IF01.ini playbooks/08_apagar_equipos_aula.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e modo_apagado=inactivos \
+#       -e confirmar_apagado=true --check
+
+- name: Apagar equipos del aula (excepto el del profesor)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    profesor_host: ""      # obligatorio: p.ej. IF01-00
+    modo_apagado: ""       # obligatorio: 'todos' o 'inactivos'
+    confirmar_apagado: false  # obligatorio: -e confirmar_apagado=true
+    retraso_segundos: 60
+
+  pre_tasks:
+    - name: Comprobar que se han pasado las variables obligatorias
+      ansible.builtin.assert:
+        that:
+          - profesor_host != ""
+          - modo_apagado in ['todos', 'inactivos']
+          - confirmar_apagado | bool
+        fail_msg: >-
+          Faltan variables obligatorias o están mal puestas. Hace falta
+          -e profesor_host=IF0X-00 -e modo_apagado=todos|inactivos
+          -e confirmar_apagado=true. Sin valores por defecto a propósito,
+          para no apagar el aula equivocada (o el aula entera) sin querer.
+      run_once: true
+
+    - name: Excluir el equipo del profesor (nunca se toca)
+      ansible.builtin.meta: end_host
+      when: inventory_hostname == profesor_host
+
+  tasks:
+    # Solo hace falta mirar quién ha iniciado sesión en modo 'inactivos';
+    # en modo 'todos' esto ni se ejecuta, da igual quién esté conectado.
+    - name: "[inactivos] Comprobar si hay alguna sesión de usuario iniciada"
+      ansible.builtin.command: who
+      register: sesiones_who
+      changed_when: false
+      when: modo_apagado == 'inactivos'
+
+    - name: Decidir si este equipo se apaga
+      ansible.builtin.set_fact:
+        apagar_este_equipo: >-
+          {{ modo_apagado == 'todos'
+             or (sesiones_who.stdout_lines | default([]) | length == 0) }}
+
+    - name: Apagar el equipo
+      ansible.builtin.shutdown:
+        delay: "{{ retraso_segundos }}"
+        msg: >-
+          Apagado remoto administrativo (Ansible) — guarda tu trabajo,
+          este equipo se apaga en {{ retraso_segundos }} segundos.
+      when: apagar_este_equipo
+
+    - name: "[inactivos] Equipo con sesión iniciada: se deja encendido"
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} tiene una sesión iniciada ahora mismo
+          — no se apaga en modo 'inactivos'.
+      when:
+        - modo_apagado == 'inactivos'
+        - not apagar_este_equipo
