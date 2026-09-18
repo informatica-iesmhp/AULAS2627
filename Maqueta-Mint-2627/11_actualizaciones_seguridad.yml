@@ -1,0 +1,153 @@
+---
+# 07_actualizaciones_seguridad.yml
+#
+# Configura unattended-upgrades en los equipos del aula para que se instalen
+# EN AUTOMÁTICO, sin intervención de nadie, solo las actualizaciones de
+# SEGURIDAD del repositorio base de Ubuntu del que cuelga Mint. Deja fuera,
+# a propósito, las actualizaciones "normales" (no de seguridad), las
+# específicas de Mint y los backports.
+#
+# Uso (una aula cada vez, como el resto de playbooks numerados):
+#   ansible-playbook -i inventarios/IF01.ini playbooks/07_actualizaciones_seguridad.yml -u ansible-admin
+#
+# Requisito previo importante: si el aula todavía arrastra el repositorio de
+# HashiCorp roto heredado de la maqueta (ver
+# diagnostico-bootstrap-aulas-IF01-IF04.md, sección 6 — "apt update falla
+# con unknown reason"), hay que lanzar antes
+# arreglar_repo_apt_hashicorp.yml. Con un solo repositorio con la clave GPG
+# inválida, "apt update" falla ENTERO (no solo ese repo), y
+# unattended-upgrades se queda sin poder comprobar nada — en silencio, sin
+# avisar a nadie. Por eso el primer paso de este playbook comprueba justo
+# eso y para la ejecución en ese equipo si "apt update" no está limpio.
+#
+# Verificación recomendada: lanzar primero con --limit contra UN equipo
+# (el del profesor, p. ej. IF0X-00) y revisar la tarea final del play
+# ("Mostrar qué orígenes...") antes de extenderlo al aula entera. Ver el
+# documento del proyecto para el porqué de cada decisión y los comandos de
+# verificación manual.
+
+- name: Configurar actualizaciones automáticas de seguridad (unattended-upgrades)
+  hosts: all
+  become: true
+
+  vars:
+    # Codename de Ubuntu del que cuelga esta versión de Mint (NO el
+    # codename de Mint). Mint 22.x (22 "Wilma", 22.1 "Xia", 22.2, 22.3
+    # "Zena") se basa en Ubuntu 24.04 LTS "noble". Si el día de mañana se
+    # despliega otra versión de Mint, hay que revisar y cambiar esto
+    # explícitamente — ver el aviso de la tarea "Fallar si..." más abajo.
+    ubuntu_codename: noble
+
+    # Ventana de reinicio automático: hora a la que, SI hace falta reiniciar
+    # tras aplicar parches (kernel, glibc, etc.) y no hay nadie con sesión
+    # iniciada, se reinicia solo. Pensada para caer fuera del horario
+    # lectivo. Ajustable con -e hora_reinicio_actualizaciones=HH:MM.
+    hora_reinicio_actualizaciones: "05:30"
+
+  tasks:
+    - name: Comprobar que "apt update" funciona limpio antes de tocar nada
+      ansible.builtin.command: apt-get update
+      register: apt_update_check
+      changed_when: false
+      failed_when: apt_update_check.rc != 0
+
+    - name: Instalar unattended-upgrades y update-notifier-common
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - update-notifier-common
+        state: present
+        update_cache: false
+
+    - name: Desplegar 50unattended-upgrades (solo seguridad, orígenes explícitos)
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          // Gestionado por Ansible (07_actualizaciones_seguridad.yml) — NO EDITAR A MANO.
+          // Los cambios manuales se perderán en el próximo despliegue.
+          //
+          // AVISO IMPORTANTE (Linux Mint):
+          // Las variables ${distro_id} y ${distro_codename} que trae la
+          // configuración de fábrica de unattended-upgrades valen, en Mint,
+          // "Linuxmint" y el nombre en clave de MINT (p. ej. "zena") — no
+          // "Ubuntu" y "{{ ubuntu_codename }}". Con la configuración de
+          // fábrica, el filtro de orígenes nunca encuentra nada que
+          // actualizar: los paquetes que de verdad importan (kernel,
+          // openssl, glibc...) vienen del repositorio base de Ubuntu, con
+          // origen real "Ubuntu", no "Linuxmint". Es un problema conocido y
+          // sin resolver del propio proyecto Mint
+          // (linuxmint/linuxmint issue #282 en GitHub). Por eso aquí se
+          // escribe el origen real a pelo, en vez de con esas variables: es
+          // la única forma de que esto haga algo de verdad en Mint.
+          Unattended-Upgrade::Allowed-Origins {
+              "Ubuntu:{{ ubuntu_codename }}-security";
+          //  "UbuntuESMApps:{{ ubuntu_codename }}-apps-security";  // solo si hay Ubuntu Pro/ESM activado en el equipo
+          //  "UbuntuESM:{{ ubuntu_codename }}-infra-security";      // solo si hay Ubuntu Pro/ESM activado en el equipo
+          };
+
+          // Deliberado: NO se incluye "Ubuntu:{{ ubuntu_codename }}" (eso
+          // traería también actualizaciones normales, no solo seguridad) ni
+          // ningún origen "Linuxmint:..." (Mint no publica un repositorio
+          // de seguridad separado para sus propios paquetes).
+
+          Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+          Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+          Unattended-Upgrade::Remove-Unused-Dependencies "false";
+
+          // Reinicio automático solo si hace falta y solo si NO hay nadie
+          // con sesión iniciada en ese momento (red de seguridad para no
+          // interrumpir a un alumno o profesor a media clase). Si hay
+          // alguien conectado a la hora marcada, se pospone hasta la
+          // siguiente comprobación con el equipo libre.
+          Unattended-Upgrade::Automatic-Reboot "true";
+          Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+          Unattended-Upgrade::Automatic-Reboot-Time "{{ hora_reinicio_actualizaciones }}";
+
+          Unattended-Upgrade::SyslogEnable "true";
+      notify: comprobar sintaxis de la configuración de apt
+
+    - name: Desplegar 20auto-upgrades (activa la comprobación e instalación diaria)
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          // Gestionado por Ansible (07_actualizaciones_seguridad.yml) — NO EDITAR A MANO.
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Download-Upgradeable-Packages "1";
+          APT::Periodic::AutocleanInterval "7";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    - name: Asegurar que los timers systemd de apt están activos
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+
+    - name: Asegurar que el servicio unattended-upgrades está activo
+      ansible.builtin.systemd:
+        name: unattended-upgrades.service
+        enabled: true
+        state: started
+
+    - name: Simulación (dry-run) para comprobar qué orígenes usa realmente este equipo
+      ansible.builtin.command: unattended-upgrade --dry-run --debug
+      register: dry_run
+      changed_when: false
+      failed_when: false
+
+    - name: Mostrar los orígenes permitidos que ha detectado unattended-upgrades
+      ansible.builtin.debug:
+        msg: "{{ (dry_run.stdout_lines + dry_run.stderr_lines) | select('search', 'origin') | list }}"
+
+  handlers:
+    - name: comprobar sintaxis de la configuración de apt
+      ansible.builtin.command: apt-config dump
+      changed_when: false
