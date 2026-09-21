@@ -1,0 +1,179 @@
+---
+# 10_apagado_automatico_nocturno.yml
+#
+# Instala un temporizador systemd LOCAL en cada equipo del aula que lo
+# apaga automáticamente cada noche a una hora fija (21:00 por defecto),
+# avisando antes con un margen de cortesía. El equipo del profesor se
+# excluye siempre, igual que en 08_apagar_equipos_aula.yml.
+#
+# LA IDEA CLAVE: esto NO es un playbook que se quede corriendo ni que haya
+# que relanzar cada noche. Ansible solo se usa para "dejar montado" el
+# mecanismo (como 09_habilitar_wol.yml) — un temporizador de systemd
+# (como el despertador del propio equipo) que a partir de ahora se dispara
+# solo, todas las noches, funcione o no funcione Ansible, esté conectado
+# o no el equipo del profesor a la red. Si un equipo está apagado a las
+# 21:00, el temporizador simplemente no hace nada ese día (no hay nada que
+# apagar, y no se "acumula" ningún apagado pendiente).
+#
+# COMPORTAMIENTO (decidido expresamente así): a las 21:00 el equipo avisa
+# por pantalla a quien tenga sesión iniciada y se apaga igualmente pasado
+# el margen, haya o no alguien trabajando. No comprueba sesiones activas
+# a propósito — si se prefiere el comportamiento "avisar pero no apagar
+# si hay sesión" (como el modo `inactivos` de 08_apagar_equipos_aula.yml),
+# ver la nota al final de este fichero.
+#
+# Variables:
+#   profesor_host                 (obligatoria) p.ej. IF01-00
+#   confirmar_apagado_automatico  (obligatoria) debe ser exactamente "true"
+#   hora_apagado                  (opcional, por defecto "21:00", formato HH:MM)
+#   apagado_margen_minutos        (opcional, por defecto 5)
+#   apagado_automatico_activo     (opcional, por defecto true)
+#                                  -> false desactiva el temporizador SIN
+#                                     desinstalarlo (útil para semanas de
+#                                     exámenes, turno de tarde puntual, etc.)
+#
+# Uso:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/10_apagado_automatico_nocturno.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e confirmar_apagado_automatico=true
+#
+#   # Probar primero en un equipo piloto:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/10_apagado_automatico_nocturno.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e confirmar_apagado_automatico=true \
+#       --limit IF01-05
+#
+#   # Cambiar la hora o el margen de aviso:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/10_apagado_automatico_nocturno.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e confirmar_apagado_automatico=true \
+#       -e hora_apagado=22:30 -e apagado_margen_minutos=10
+#
+#   # Desactivar temporalmente en toda el aula sin desinstalar nada:
+#   ansible-playbook -i inventarios/IF01.ini playbooks/10_apagado_automatico_nocturno.yml \
+#       -u ansible-admin -e profesor_host=IF01-00 -e confirmar_apagado_automatico=true \
+#       -e apagado_automatico_activo=false
+
+- name: Comprobar variables obligatorias antes de tocar nada
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Verificar profesor_host, confirmar_apagado_automatico y hora_apagado
+      ansible.builtin.assert:
+        that:
+          - profesor_host is defined
+          - confirmar_apagado_automatico is defined
+          - confirmar_apagado_automatico == "true"
+          - hora_apagado is match("^[0-2][0-9]:[0-5][0-9]$")
+        fail_msg: >
+          Faltan variables obligatorias o hora_apagado no tiene formato HH:MM.
+          Lanza el playbook con -e profesor_host=IF0X-00
+          -e confirmar_apagado_automatico=true (y opcionalmente -e hora_apagado=HH:MM).
+        success_msg: "Variables correctas."
+      vars:
+        hora_apagado: "{{ hora_apagado | default('21:00') }}"
+      run_once: true
+      delegate_to: localhost
+
+- name: Instalar el apagado automático nocturno en el aula (excepto el profesor)
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    hora_apagado: "21:00"
+    apagado_margen_minutos: 5
+    apagado_automatico_activo: true
+
+  pre_tasks:
+    - name: Excluir el equipo del profesor
+      ansible.builtin.meta: end_host
+      when: inventory_hostname == profesor_host
+
+  tasks:
+    - name: Calcular el OnCalendar de systemd a partir de hora_apagado
+      ansible.builtin.set_fact:
+        apagado_oncalendar: "*-*-* {{ hora_apagado }}:00"
+
+    - name: Desplegar el script de apagado nocturno
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/apagado-nocturno.sh
+        mode: "0755"
+        owner: root
+        group: root
+        content: |
+          #!/bin/bash
+          # Generado por 10_apagado_automatico_nocturno.yml — no editar a mano,
+          # los cambios se pierden en la siguiente pasada del playbook.
+          #
+          # Avisa por pantalla a quien tenga sesión iniciada y apaga el equipo
+          # pasado el margen de cortesía, SIEMPRE, haya o no alguien conectado.
+          MARGEN_MIN="{{ apagado_margen_minutos }}"
+          MENSAJE="Apagado automatico nocturno del aula en ${MARGEN_MIN} minutos. Guarda tu trabajo y cierra sesion."
+          logger -t apagado-nocturno "Disparado a las {{ hora_apagado }} en $(hostname) - margen ${MARGEN_MIN} min"
+          /usr/sbin/shutdown -h +"${MARGEN_MIN}" "${MENSAJE}"
+
+    - name: Desplegar el servicio systemd
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/apagado-nocturno.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Apagado automatico nocturno del aula
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/apagado-nocturno.sh
+
+    - name: Desplegar el temporizador systemd
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/apagado-nocturno.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Dispara el apagado automatico nocturno del aula ({{ hora_apagado }})
+
+          [Timer]
+          OnCalendar={{ apagado_oncalendar }}
+          Persistent=false
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Activar y arrancar el temporizador
+      ansible.builtin.systemd:
+        name: apagado-nocturno.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: apagado_automatico_activo | bool
+
+    - name: Desactivar el temporizador (apagado_automatico_activo=false)
+      ansible.builtin.systemd:
+        name: apagado-nocturno.timer
+        enabled: false
+        state: stopped
+        daemon_reload: true
+      when: not (apagado_automatico_activo | bool)
+
+    - name: Consultar la próxima ejecución programada
+      ansible.builtin.command: systemctl list-timers apagado-nocturno.timer --no-pager
+      register: proxima_ejecucion
+      changed_when: false
+      when: apagado_automatico_activo | bool
+
+    - name: Mostrar la próxima ejecución programada
+      ansible.builtin.debug:
+        var: proxima_ejecucion.stdout_lines
+      when: apagado_automatico_activo | bool
+
+# NOTA — variante "no apagar si hay sesión activa":
+# Si en el futuro se prefiere que, a las 21:00, un equipo con sesión
+# iniciada NO se apague (como el modo `inactivos` de
+# 08_apagar_equipos_aula.yml), basta con cambiar la última línea del
+# script por algo como:
+#
+#   if ! who | grep -q .; then
+#       /usr/sbin/shutdown -h +"${MARGEN_MIN}" "${MENSAJE}"
+#   else
+#       logger -t apagado-nocturno "Sesion activa en $(hostname), no se apaga esta noche"
+#   fi
+#
+# No se ha aplicado por defecto porque se pidió expresamente que el
+# apagado sea incondicional (con aviso previo).
