@@ -1,3 +1,26 @@
+# Escritorio remoto (xrdp) en el PC del profesor — IF01-IF04
+
+**Fecha:** 2026-09-30 · **Estado:** sin probar en hardware real (probar primero en IF03).
+
+## Decisión
+RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos no llevan servicio de escritorio remoto: a ellos se llega desde el PC del profesor con Veyon (gráfico) y Ansible (SSH). Es como la recepción de un hotel: una sola puerta con acceso desde fuera, y dentro están las llaves maestras.
+
+## Cambios respecto al playbook anterior (04/08 sin probar)
+- `hosts: "*-00"`: solo el PC del profesor, aunque el inventario tenga toda el aula.
+- Ya no activa ufw por defecto (`firewall_modo: nft`): una tabla nftables propia que solo filtra el 3389/TCP (permitido desde `rdp_redes_permitidas` y loopback; descartado para el resto). No toca SSH, Veyon ni nada más, y es compatible con activar ufw más adelante. `ufw` queda como opción; `ninguno` solo para pruebas.
+- Acceso por grupo del AD (`pam_succeed_if ... ingroup grupoprofesores`) en vez de lista de usuarios por aula: el mismo grupo que da acceso a la clave de Veyon, así Veyon Master funciona dentro de la sesión RDP.
+- Root no puede entrar por RDP (`AllowRootLogin=false`).
+- Regla polkit para evitar los avisos de colord en sesiones RDP.
+- Handlers en vez de reiniciar xrdp siempre; comprobación final de que escucha en 3389.
+
+## Pendiente
+- Probar en IF03 (sesión Cinnamon por xrdp, pantalla negra, Veyon Master dentro de la sesión).
+- Comprobar que `getent group grupoprofesores` lista los miembros vía SSSD.
+- Un mismo usuario no debe tener a la vez sesión local y RDP en el mismo equipo.
+- Decidir cómo se accede desde el resto del centro (VLAN por aula → enrutamiento/ACL entre VLAN, o salto por SSH).
+
+## Playbook
+```yaml
 ---
 # 08_habilitar_escritorio_remoto.yml
 # ---------------------------------------------------------------------------
@@ -286,3 +309,4 @@
           Si sale pantalla negra, revisa /var/log/xrdp-sesman.log y
           /var/log/xrdp.log. Para ver la restricción de red:
           sudo nft list table inet xrdp_restriccion
+```
