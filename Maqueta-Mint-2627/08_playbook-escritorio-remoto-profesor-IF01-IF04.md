@@ -1,6 +1,6 @@
 # Escritorio remoto (xrdp) en el PC del profesor — IF01-IF04
 
-**Fecha:** 2026-09-30 · **Estado:** sin probar en hardware real (probar primero en IF03).
+**Fecha:** 2026-09-30 · **Estado:** validado a mano en IF03 (2/10/2026) tras el arreglo de SSSD; pendiente lanzar el playbook en IF01, IF02 e IF04.
 
 ## Decisión
 RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos no llevan servicio de escritorio remoto: a ellos se llega desde el PC del profesor con Veyon (gráfico) y Ansible (SSH). Es como la recepción de un hotel: una sola puerta con acceso desde fuera, y dentro están las llaves maestras.
@@ -13,8 +13,21 @@ RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos
 - Regla polkit para evitar los avisos de colord en sesiones RDP.
 - Handlers en vez de reiniciar xrdp siempre; comprobación final de que escucha en 3389.
 
+## Problema encontrado en IF03: RDP conecta pero el login falla
+**Causa:** el login de dominio pasa por el control de acceso por GPO de SSSD (`ad_gpo_access_control`). SSSD no conoce el servicio PAM `xrdp-sesman`, así que no sabe qué derecho de inicio de sesión aplicarle y deniega el acceso.
+
+**Arreglo (ya incluido en el playbook):** en la sección `[domain/...]` de `/etc/sssd/sssd.conf`:
+
+```ini
+ad_gpo_map_remote_interactive = +xrdp-sesman
+```
+
+y reiniciar `sssd`. El playbook detecta solo la sección de dominio (si hay varias, fijar `ad_dominio`) y se niega a seguir si no la encuentra, para no crear una sección nueva por error. Con esto SSSD aplica a RDP la GPO "Permitir inicio de sesión a través de Servicios de Escritorio remoto", que debe incluir a quien vaya a entrar.
+
+Analogía: el conserje (SSSD) tenía la lista de puertas que conoce; la puerta "xrdp" no estaba en ninguna lista y, ante la duda, no dejaba pasar. Ahora sabe que es una "entrada remota" y aplica la norma del AD para ese tipo de entrada.
+
 ## Pendiente
-- Probar en IF03 (sesión Cinnamon por xrdp, pantalla negra, Veyon Master dentro de la sesión).
+- Lanzar el playbook en IF01, IF02 e IF04 y probar login RDP + Veyon Master dentro de la sesión.
 - Comprobar que `getent group grupoprofesores` lista los miembros vía SSSD.
 - Un mismo usuario no debe tener a la vez sesión local y RDP en el mismo equipo.
 - Decidir cómo se accede desde el resto del centro (VLAN por aula → enrutamiento/ACL entre VLAN, o salto por SSH).
@@ -42,6 +55,16 @@ RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos
 #     abrir Veyon Master en esa sesión. Dar o quitar acceso = gestionarlo en
 #     el AD, no tocar los PCs.
 #   - Root nunca puede entrar por RDP.
+#   - SSSD: como el login de dominio pasa por el control de acceso por GPO
+#     del AD (ad_gpo_access_control), hay que decirle a SSSD que el servicio
+#     PAM "xrdp-sesman" es un inicio de sesión remoto interactivo
+#     (ad_gpo_map_remote_interactive = +xrdp-sesman). Sin esto SSSD lo trata
+#     como un servicio desconocido y DENIEGA el acceso: la conexión RDP llega
+#     pero el login falla. Validado a mano en IF03 (oct-2026).
+#     El playbook detecta solo la sección [domain/...] de sssd.conf; si hay
+#     más de una, fija ad_dominio (p.ej. ad_dominio: iesmhp.local).
+#     Además, la GPO "Permitir inicio de sesión a través de Servicios de
+#     Escritorio remoto" del AD tiene que incluir a quien vaya a entrar.
 #
 # Cortafuegos (variable firewall_modo):
 #   - "nft" (POR DEFECTO): NO activa ufw ni ningún cortafuegos general. Crea
@@ -84,6 +107,11 @@ RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos
     rdp_puerto: 3389
 
   handlers:
+    - name: Reiniciar sssd
+      ansible.builtin.systemd:
+        name: sssd
+        state: restarted
+
     - name: Reiniciar xrdp
       ansible.builtin.systemd:
         name: xrdp
@@ -125,6 +153,41 @@ RDP solo en el equipo del profesor (`*-00`) de cada aula. Los equipos de alumnos
           Comprueba en este equipo con 'getent group' e 'id <profesor>' que
           SSSD devuelve los miembros; si no, nadie podrá entrar por RDP.
       when: grupo_ad.stdout.split(':')[-1] | length == 0
+
+    # ----------------------------------------------- SSSD (control por GPO)
+    - name: Leer la configuración de SSSD
+      ansible.builtin.slurp:
+        src: /etc/sssd/sssd.conf
+      register: sssd_conf
+
+    - name: Localizar la sección [domain/...] de sssd.conf
+      ansible.builtin.set_fact:
+        sssd_secciones_dominio: "{{ sssd_conf.content | b64decode | regex_findall('(?m)^\\s*\\[(domain/[^\\]]+)\\]') }}"
+
+    - name: Elegir la sección de dominio a modificar
+      ansible.builtin.set_fact:
+        sssd_seccion: "{{ ('domain/' ~ ad_dominio) if ad_dominio is defined else (sssd_secciones_dominio | first | default('')) }}"
+
+    - name: Comprobar que esa sección existe (no crear una sección nueva por error)
+      ansible.builtin.assert:
+        that:
+          - sssd_seccion in sssd_secciones_dominio
+          - ad_dominio is defined or sssd_secciones_dominio | length == 1
+        fail_msg: >-
+          No se ha podido determinar la sección de dominio de
+          /etc/sssd/sssd.conf (encontradas: {{ sssd_secciones_dominio }}).
+          Define ad_dominio con el nombre exacto que aparece tras 'domain/'.
+
+    - name: Permitir xrdp-sesman en el control de acceso por GPO de SSSD
+      community.general.ini_file:
+        path: /etc/sssd/sssd.conf
+        section: "{{ sssd_seccion }}"
+        option: ad_gpo_map_remote_interactive
+        value: "+xrdp-sesman"
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Reiniciar sssd
 
     # ------------------------------------------------------------------ xrdp
     - name: Instalar xrdp y xorgxrdp (sesión propia, no comparte pantalla)

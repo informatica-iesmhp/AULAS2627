@@ -19,6 +19,16 @@
 #     abrir Veyon Master en esa sesión. Dar o quitar acceso = gestionarlo en
 #     el AD, no tocar los PCs.
 #   - Root nunca puede entrar por RDP.
+#   - SSSD: como el login de dominio pasa por el control de acceso por GPO
+#     del AD (ad_gpo_access_control), hay que decirle a SSSD que el servicio
+#     PAM "xrdp-sesman" es un inicio de sesión remoto interactivo
+#     (ad_gpo_map_remote_interactive = +xrdp-sesman). Sin esto SSSD lo trata
+#     como un servicio desconocido y DENIEGA el acceso: la conexión RDP llega
+#     pero el login falla. Validado a mano en IF03 (oct-2026).
+#     El playbook detecta solo la sección [domain/...] de sssd.conf; si hay
+#     más de una, fija ad_dominio (p.ej. ad_dominio: iesmhp.local).
+#     Además, la GPO "Permitir inicio de sesión a través de Servicios de
+#     Escritorio remoto" del AD tiene que incluir a quien vaya a entrar.
 #
 # Cortafuegos (variable firewall_modo):
 #   - "nft" (POR DEFECTO): NO activa ufw ni ningún cortafuegos general. Crea
@@ -61,6 +71,11 @@
     rdp_puerto: 3389
 
   handlers:
+    - name: Reiniciar sssd
+      ansible.builtin.systemd:
+        name: sssd
+        state: restarted
+
     - name: Reiniciar xrdp
       ansible.builtin.systemd:
         name: xrdp
@@ -102,6 +117,41 @@
           Comprueba en este equipo con 'getent group' e 'id <profesor>' que
           SSSD devuelve los miembros; si no, nadie podrá entrar por RDP.
       when: grupo_ad.stdout.split(':')[-1] | length == 0
+
+    # ----------------------------------------------- SSSD (control por GPO)
+    - name: Leer la configuración de SSSD
+      ansible.builtin.slurp:
+        src: /etc/sssd/sssd.conf
+      register: sssd_conf
+
+    - name: Localizar la sección [domain/...] de sssd.conf
+      ansible.builtin.set_fact:
+        sssd_secciones_dominio: "{{ sssd_conf.content | b64decode | regex_findall('(?m)^\\s*\\[(domain/[^\\]]+)\\]') }}"
+
+    - name: Elegir la sección de dominio a modificar
+      ansible.builtin.set_fact:
+        sssd_seccion: "{{ ('domain/' ~ ad_dominio) if ad_dominio is defined else (sssd_secciones_dominio | first | default('')) }}"
+
+    - name: Comprobar que esa sección existe (no crear una sección nueva por error)
+      ansible.builtin.assert:
+        that:
+          - sssd_seccion in sssd_secciones_dominio
+          - ad_dominio is defined or sssd_secciones_dominio | length == 1
+        fail_msg: >-
+          No se ha podido determinar la sección de dominio de
+          /etc/sssd/sssd.conf (encontradas: {{ sssd_secciones_dominio }}).
+          Define ad_dominio con el nombre exacto que aparece tras 'domain/'.
+
+    - name: Permitir xrdp-sesman en el control de acceso por GPO de SSSD
+      community.general.ini_file:
+        path: /etc/sssd/sssd.conf
+        section: "{{ sssd_seccion }}"
+        option: ad_gpo_map_remote_interactive
+        value: "+xrdp-sesman"
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Reiniciar sssd
 
     # ------------------------------------------------------------------ xrdp
     - name: Instalar xrdp y xorgxrdp (sesión propia, no comparte pantalla)
