@@ -36,8 +36,8 @@
 #      no a través de este recurso de red.
 #
 # Variables configurables — edítalas aquí si no coinciden con vuestro AD:
-GRUPO_PROFESORES="profesores"
-GRUPO_ALUMNOS="alumnos"
+GRUPO_PROFESORES="grupoprofesores"
+GRUPO_ALUMNOS="grupoalumnos"
 CUENTA_INVITADO="invitado-comparte-aula"   # cuenta LOCAL, no de dominio
 SAMBA_WORKGROUP="IESMHP"
 SAMBA_REALM="IESMHP.LOCAL"
