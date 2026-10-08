@@ -34,13 +34,40 @@
 #      El profesorado sigue teniendo acceso completo de escritura en
 #      ISO/MV, pero solo localmente en este equipo (grupo profesores),
 #      no a través de este recurso de red.
+#   5. Samba va en "security = user" (servidor independiente), NO en
+#      "security = ads". Motivo (hallazgo de las pruebas en IF03, 08/10):
+#      desde Samba 4.8, "security = ads" exige que winbind esté en
+#      marcha, y en estos equipos el dominio lo gestiona SSSD, no
+#      winbind (que está inactivo). Con "ads" sin winbind, el invitado
+#      llegaba a iniciar sesión pero al entrar en el recurso Samba
+#      respondía "tree connect failed: NT_STATUS_INVALID_PARAMETER_MIX",
+#      que en los alumnos se veía como "mount error(22): Invalid
+#      argument". Como el recurso es solo de invitado con cuenta LOCAL,
+#      Samba no necesita el dominio para nada: "security = user" es la
+#      configuración correcta y no toca los inicios de sesión de dominio
+#      del equipo (esos van por SSSD, no por Samba).
+#      Consecuencia: si algún día se quiere en este equipo otro recurso
+#      con autenticación de usuarios del AD, habrá que unir Samba al
+#      dominio de verdad (net ads join + winbind) — no basta con volver
+#      a poner "security = ads".
+#   6. "guest account" va en [global]: es un parámetro global y, puesto
+#      dentro de [comparte-aula], Samba lo ignora ("Global parameter
+#      guest account found in service section!").
+#
+# El script no silencia la validación de "testparm -s": si queda algún
+# ERROR o WARNING en el smb.conf resultante, se muestra al final del
+# paso 8.
+#
+# Relanzar este script en un equipo ya preparado es seguro (no reformatea
+# el disco, no borra la cuenta de invitado) y además REFRESCA siempre los
+# bloques de smb.conf con la configuración más reciente del script —
+# basta con volver a ejecutar: sudo ./preparar_comparte_aula_profesor.sh
 #
 # Variables configurables — edítalas aquí si no coinciden con vuestro AD:
 GRUPO_PROFESORES="grupoprofesores"
 GRUPO_ALUMNOS="grupoalumnos"
 CUENTA_INVITADO="invitado-comparte-aula"   # cuenta LOCAL, no de dominio
 SAMBA_WORKGROUP="IESMHP"
-SAMBA_REALM="IESMHP.LOCAL"
 SHARE_NAME="comparte-aula"
 DISCO="/dev/sdb"
 PARTICION="/dev/sdb1"
@@ -131,72 +158,79 @@ echo "== 8. Configurando Samba =="
 SMB_CONF="/etc/samba/smb.conf"
 [[ -f "${SMB_CONF}.orig" ]] || cp "${SMB_CONF}" "${SMB_CONF}.orig"
 
-MARCA_INICIO_GLOBAL="# BEGIN comparte-aula - autenticacion de dominio"
-MARCA_FIN_GLOBAL="# END comparte-aula - autenticacion de dominio"
-if ! grep -q "${MARCA_INICIO_GLOBAL}" "${SMB_CONF}"; then
-    # Se inserta al FINAL de la sección [global] (no justo debajo de la
-    # cabecera), para que nuestros valores ganen a cualquier "workgroup ="
-    # u otro parámetro que ya trajera el smb.conf original de la maqueta:
-    # en Samba, si un parámetro se repite dentro de la misma sección,
-    # gana la última aparición.
-    awk -v inicio="${MARCA_INICIO_GLOBAL}" -v fin="${MARCA_FIN_GLOBAL}" \
-        -v wg="${SAMBA_WORKGROUP}" -v realm="${SAMBA_REALM}" '
-        BEGIN { en_global = 0; insertado = 0 }
-        /^\[global\]/ { en_global = 1; print; next }
-        /^\[/ {
-            if (en_global == 1 && insertado == 0) {
-                print inicio
-                print "   workgroup = " wg
-                print "   realm = " realm
-                print "   security = ads"
-                print "   idmap config * : backend = sss"
-                print "   idmap config * : range = 10000-999999999"
-                print "   map to guest = Bad User"
-                print fin
-                insertado = 1
-            }
-            en_global = 0
-            print
-            next
+MARCA_INICIO_GLOBAL="# BEGIN comparte-aula - global"
+MARCA_FIN_GLOBAL="# END comparte-aula - global"
+# Marcas de versiones anteriores del script (con security = ads): se
+# borran también, para que relanzar el script en un equipo preparado con
+# una versión vieja (p. ej. IF03-00) no deje el bloque antiguo dentro.
+MARCA_INICIO_GLOBAL_VIEJA="# BEGIN comparte-aula - autenticacion de dominio"
+MARCA_FIN_GLOBAL_VIEJA="# END comparte-aula - autenticacion de dominio"
+
+# Se borra el bloque si ya existía y se vuelve a insertar siempre con el
+# contenido actual del script, así el smb.conf queda al día sin editarlo
+# a mano.
+sed -i "/^${MARCA_INICIO_GLOBAL_VIEJA}\$/,/^${MARCA_FIN_GLOBAL_VIEJA}\$/d" "${SMB_CONF}"
+sed -i "/^${MARCA_INICIO_GLOBAL}\$/,/^${MARCA_FIN_GLOBAL}\$/d" "${SMB_CONF}"
+
+# security = user (no ads): ver punto 5 de la cabecera.
+BLOQUE_GLOBAL="${MARCA_INICIO_GLOBAL}
+   workgroup = ${SAMBA_WORKGROUP}
+   security = user
+   map to guest = Bad User
+   guest account = ${CUENTA_INVITADO}
+${MARCA_FIN_GLOBAL}"
+export BLOQUE_GLOBAL
+
+# Se inserta al FINAL de la sección [global] (no justo debajo de la
+# cabecera), para que nuestros valores ganen a cualquier parámetro
+# repetido que ya trajera el smb.conf original de la maqueta: en Samba,
+# si un parámetro se repite dentro de la misma sección, gana la última
+# aparición.
+awk '
+    BEGIN { en_global = 0; insertado = 0 }
+    /^\[global\]/ { en_global = 1; print; next }
+    /^\[/ {
+        if (en_global == 1 && insertado == 0) {
+            print ENVIRON["BLOQUE_GLOBAL"]
+            insertado = 1
         }
-        { print }
-        END {
-            if (en_global == 1 && insertado == 0) {
-                print inicio
-                print "   workgroup = " wg
-                print "   realm = " realm
-                print "   security = ads"
-                print "   idmap config * : backend = sss"
-                print "   idmap config * : range = 10000-999999999"
-                print "   map to guest = Bad User"
-                print fin
-            }
+        en_global = 0
+        print
+        next
+    }
+    { print }
+    END {
+        if (en_global == 1 && insertado == 0) {
+            print ENVIRON["BLOQUE_GLOBAL"]
         }
-    ' "${SMB_CONF}" > "${SMB_CONF}.tmp"
-    mv "${SMB_CONF}.tmp" "${SMB_CONF}"
-fi
+    }
+' "${SMB_CONF}" > "${SMB_CONF}.tmp"
+mv "${SMB_CONF}.tmp" "${SMB_CONF}"
 
 MARCA_INICIO_SHARE="# BEGIN comparte-aula - recurso"
 MARCA_FIN_SHARE="# END comparte-aula - recurso"
-if ! grep -q "${MARCA_INICIO_SHARE}" "${SMB_CONF}"; then
-    {
-        echo "${MARCA_INICIO_SHARE}"
-        echo "[${SHARE_NAME}]"
-        echo "   path = ${PUNTO_MONTAJE}/${SHARE_NAME}"
-        echo "   browsable = yes"
-        echo "   guest ok = yes"
-        echo "   guest only = yes"
-        echo "   guest account = ${CUENTA_INVITADO}"
-        echo "   read only = no"
-        echo "   force user = ${CUENTA_INVITADO}"
-        echo "   force group = ${GRUPO_PROFESORES}"
-        echo "   create mask = 0664"
-        echo "   directory mask = 2775"
-        echo "${MARCA_FIN_SHARE}"
-    } >> "${SMB_CONF}"
-fi
+sed -i "/^${MARCA_INICIO_SHARE}\$/,/^${MARCA_FIN_SHARE}\$/d" "${SMB_CONF}"
+{
+    echo "${MARCA_INICIO_SHARE}"
+    echo "[${SHARE_NAME}]"
+    echo "   path = ${PUNTO_MONTAJE}/${SHARE_NAME}"
+    echo "   browsable = yes"
+    echo "   guest ok = yes"
+    echo "   guest only = yes"
+    echo "   read only = no"
+    echo "   force user = ${CUENTA_INVITADO}"
+    echo "   force group = ${GRUPO_PROFESORES}"
+    echo "   create mask = 0664"
+    echo "   directory mask = 2775"
+    echo "${MARCA_FIN_SHARE}"
+} >> "${SMB_CONF}"
 
-testparm -s "${SMB_CONF}" > /dev/null
+echo "   Validando smb.conf con testparm..."
+SALIDA_TESTPARM="$(testparm -s "${SMB_CONF}" 2>&1)"
+echo "${SALIDA_TESTPARM}" | grep -iE "ERROR|WARNING" >&2 || true
+if ! echo "${SALIDA_TESTPARM}" | grep -q "Loaded services file OK"; then
+    echo "   ATENCION: testparm no confirma 'Loaded services file OK' — revisa los avisos de arriba antes de continuar." >&2
+fi
 
 echo "== 9. Habilitando y arrancando Samba =="
 systemctl enable --now smbd

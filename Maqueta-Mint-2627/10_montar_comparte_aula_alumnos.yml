@@ -71,7 +71,22 @@
         path: "{{ mount_point }}"
         src: "//{{ profesor_host }}/{{ samba_share_name }}"
         fstype: cifs
-        opts: >-
-          guest,vers=3.0,uid=0,gid=0,
-          file_mode=0664,dir_mode=0775,_netdev,x-systemd.automount
+        # vers=2.0: es la versión con la que se validó el montaje en IF03
+        # (08/10). OJO: el "mount error(22): Invalid argument" que daba al
+        # principio NO era por la versión SMB, sino porque el Samba del
+        # profesor estaba en "security = ads" sin winbind — ver
+        # preparar_comparte_aula_profesor.sh y el doc del proyecto.
+        #
+        # file_mode=0666 / dir_mode=0777: en el equipo del alumno todo se
+        # ve como de root, así que si los permisos locales fueran más
+        # estrictos (p. ej. 0775), el propio cliente impediría escribir a
+        # un alumno normal ANTES de llegar al servidor. Los permisos de
+        # verdad (escritura en la raíz, solo lectura en ISO/MV) los aplica
+        # el servidor con los ACL de la cuenta de invitado; aquí solo hay
+        # que no estorbar.
+        #
+        # OJO: la cadena de opciones va TODA en una sola línea. Partirla
+        # en dos con ">-" mete un espacio de más al unirlas, y mount.cifs
+        # la rechaza — así que si lo editas, no la partas en varias líneas.
+        opts: "guest,vers=2.0,uid=0,gid=0,file_mode=0666,dir_mode=0777,_netdev,x-systemd.automount"
         state: mounted
