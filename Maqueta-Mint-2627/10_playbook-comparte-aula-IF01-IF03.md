@@ -1,6 +1,6 @@
 # Carpeta compartida `comparte-aula` en IF01/IF02/IF03
 
-**Fecha:** 2026-09-18 (varias correcciones el mismo día, ver historial abajo)
+**Fecha:** 2026-09-18 (diseño); 2026-10-07/08 (pruebas en IF03, causa real del fallo de montaje encontrada y corregida; validado de extremo a extremo en IF03-21)
 **Contexto:** configuración final confirmada de las cuatro aulas —
 
 | Aula | Disco A (sistema) | Disco B (datos) |
@@ -9,93 +9,148 @@
 | IF04 (ya desplegada, funciona) | NVMe: `/` en ext4 + `/home` en ZFS (`rpool_home`) | SSD, ZFS con datasets `/datos/plantillas` y `/datos/iso` |
 
 Este documento cubre solo IF01/IF02/IF03 (ext4). IF04 usa un esquema de
-carpetas distinto (`/datos/plantillas` y `/datos/iso` directamente, sin
-`comparte-aula` ni este reparto de permisos) y no se toca aquí.
+carpetas distinto y no se toca aquí.
+
+## Estado
+
+| Aula | Profesor (script) | Alumnos (playbook) |
+|---|---|---|
+| IF03 | ✅ IF03-00 preparado (security = user) | ✅ IF03-21 validado (montaje + permisos); resto pendiente |
+| IF01 | pendiente | pendiente |
+| IF02 | pendiente | pendiente |
+
+Validación en IF03-21 (08/10), como usuario no root (`ansible-admin`,
+sin `become`): lista `/comparte-aula`, escribe en la raíz, y `touch` en
+`ISO` da "Permiso denegado".
 
 ## Diseño final
 
 `comparte-aula` vive físicamente en el segundo disco del **equipo del
-profesor únicamente** — no en cada equipo del aula. Por eso la entrega
-son dos artefactos distintos, no un solo playbook:
+profesor únicamente**. Dos artefactos:
 
-### 1. `preparar_comparte_aula_profesor.sh`
-
-Script bash, se ejecuta a mano UNA vez por aula, en el propio equipo del
-profesor (`sudo ./preparar_comparte_aula_profesor.sh`):
+### 1. `preparar_comparte_aula_profesor.sh` (equipo del profesor, a mano, una vez por aula)
 
 1. Formatea `/dev/sdb` en ext4 (etiqueta `DATOS`) y lo monta en `/datos`
    — idempotente (no reformatea si ya está preparado).
-2. Deja `/datos` en `0777` (a petición expresa: el profesorado necesita
-   poder escribir directamente en la raíz del disco).
+2. `/datos` en `0777` (a petición expresa).
 3. Crea `comparte-aula`, `ISO` y `MV` con ACL POSIX:
    - `comparte-aula` (raíz): profesores y alumnos, lectura+escritura.
+     Uso previsto: cada profesor crea ahí la carpeta de su módulo
+     (p. ej. `PROG`, `SI`, `BD`, `LMSGI` en IF03) para recoger trabajos;
+     esas carpetas heredan la escritura para alumnos.
    - `ISO` y `MV`: profesores lectura+escritura, alumnos solo lectura.
-4. Instala y configura Samba, publicando `[comparte-aula]` en la red
-   **en modo invitado (guest)** — ver decisión de autenticación abajo.
+4. Samba como **servidor independiente (`security = user`)**, publicando
+   `[comparte-aula]` en modo invitado, mapeado a la cuenta LOCAL
+   `invitado-comparte-aula`. Bloque global que inserta el script:
+   ```
+   workgroup = IESMHP
+   security = user
+   map to guest = Bad User
+   guest account = invitado-comparte-aula
+   ```
+   Recurso: `guest ok = yes`, `guest only = yes`, `read only = no`,
+   `force user = invitado-comparte-aula`, `force group = grupoprofesores`.
 
-### 2. `06_montar_comparte_aula_alumnos.yml`
+Grupos del AD: **`grupoprofesores`** y **`grupoalumnos`** (ya puestos
+por defecto en el script).
 
-Playbook de Ansible, dirigido solo a los equipos de ALUMNOS (nunca al
-del profesor, que ya tiene acceso local). Monta el recurso ya publicado
-en `/comparte-aula` con la opción `guest` — sin usuario ni contraseña.
-Se lanza con `-e profesor_host=IF0X-00` (sin valor por defecto, a
-propósito, para no montar contra el profesor equivocado).
+El script **refresca siempre** sus bloques de `smb.conf` (los borra y
+los reescribe, incluidos los de versiones anteriores del script), así
+que relanzarlo en un equipo ya preparado lo deja al día. Muestra los
+ERROR/WARNING de `testparm` en vez de silenciarlos.
 
-## Decisión de autenticación: invitado (guest), no cuenta de dominio
+### 2. `06_montar_comparte_aula_alumnos.yml` (Ansible, equipos de alumnos)
 
-Se evaluaron tres opciones para el acceso por red a `comparte-aula`:
+Monta `//<profesor>/comparte-aula` en `/comparte-aula` con:
+`guest,vers=2.0,uid=0,gid=0,file_mode=0666,dir_mode=0777,_netdev,x-systemd.automount`.
+Se lanza con `-e profesor_host=...` (de momento la IP, ver pendientes).
+`file_mode=0666`/`dir_mode=0777` para que el cliente no bloquee la
+escritura de un alumno normal antes de llegar al servidor; los permisos
+reales los aplica el servidor (ACL de la cuenta de invitado).
+En IF03-00 la copia local es `playbooks/10_montar_comparte_aula_alumnos.yml`.
 
-1. **Cuenta de dominio dedicada** (p. ej. `svc-comparte-aula`, miembro
-   de `alumnos`) — descartada: exige dar de alta la cuenta en el AD,
-   gestionar su contraseña (caducidad, bajas), y **no serviría para un
-   equipo fuera del dominio** — el caso de uso que decidió esto: un
-   profesor necesitando copiar algo a la carpeta desde su portátil
-   personal, no unido al dominio, en caso de urgencia.
-2. **Reutilizar `ansible-admin`** — descartada: es una cuenta LOCAL
-   (creada con `useradd` por `preparaclienteansibleadmin.sh`), no existe
-   en el AD, así que no autenticaría contra un recurso `security = ads`;
-   y aunque autenticara, tiene sudo sin contraseña en todos los equipos
-   del aula — mala idea meter esa credencial en un fichero distribuido a
-   todos los PCs de alumnos.
-3. **Invitado (guest), mapeado a una cuenta LOCAL del equipo del
-   profesor** (`invitado-comparte-aula`, sin contraseña, sin shell de
-   login) — **la elegida**. Sin usuario ni contraseña que gestionar, sin
-   depender del dominio en ningún lado de la conexión (ni servidor ni
-   cliente), válido también para equipos ajenos al dominio. A cambio,
-   cualquier dispositivo que llegue a la subred de esa aula concreta
-   (p. ej. `10.0.16.0/24` para IF01) accede sin autenticarse, con el
-   mismo nivel que un alumno (escritura en la raíz, solo lectura en
-   `ISO`/`MV`) — sin trazabilidad de quién hizo qué. Se valoró y se
-   aceptó ese riesgo, acotado a la subred de cada aula.
+Lanzamiento (desde el equipo del profesor, excluyéndolo a él):
+```
+ansible-playbook -i inventarios/IF03.ini playbooks/10_montar_comparte_aula_alumnos.yml \
+    -u ansible-admin --limit 'all:!IF03-00' -e profesor_host=10.0.10.100
+```
+Comprobación rápida de permisos sin entrar en el alumno:
+```
+ansible -i inventarios/IF03.ini IF03-21 -u ansible-admin -m shell -a "ls /comparte-aula; touch /comparte-aula/prueba_alumno.txt && echo RAIZ-OK; touch /comparte-aula/ISO/no_deberia.txt && echo ISO-MAL || echo ISO-BLOQUEADO-OK; rm -f /comparte-aula/prueba_alumno.txt"
+```
 
-En Samba: `guest ok = yes`, `guest only = yes` (fuerza invitado siempre,
-incluso si alguien manda credenciales) y `guest account =
-invitado-comparte-aula`, solo en el recurso `[comparte-aula]` — el resto
-de la configuración de dominio (`security = ads`, etc.) se deja intacta
-por si en el futuro se añaden otros recursos que sí necesiten
-autenticación real.
+## Decisión de autenticación: invitado con cuenta local
 
-## Pendiente / a verificar antes de lanzarlo a un aula entera
+Se descartaron cuenta de servicio de dominio (contraseña que gestionar,
+no sirve fuera del dominio) y reutilizar `ansible-admin` (sudo sin
+contraseña en todos los equipos). Se eligió invitado mapeado a una
+cuenta LOCAL: sin credenciales, válido también desde el portátil
+personal de un profesor fuera del dominio. Riesgo aceptado: cualquier
+equipo de la subred del aula entra con nivel alumno, sin trazabilidad.
+**Consecuencia adicional:** por red todos los alumnos son el mismo
+usuario, así que cualquiera puede borrar lo que haya dejado otro en las
+carpetas de módulo; no se puede evitar con permisos.
 
-- **Nombres de grupo**: confirmar con `getent group profesores` /
-  `getent group alumnos` en un equipo que ya funcione (p. ej. IF04) —
-  el script los tiene como variables editables si no coinciden.
-- **Probar primero en un equipo piloto**: el script del profesor, en su
-  propia máquina (no hay "aula entera" que pilotar ahí); el playbook de
-  alumnos con `--limit` en un equipo antes de extenderlo al resto.
-- **Confirmar el nombre/IP de cada equipo de profesor** (`IF01-00`,
-  `IF02-00`, `IF03-00` según `macs.csv`) al lanzar
-  `06_montar_comparte_aula_alumnos.yml` con `-e profesor_host=...`.
+## Incidencia principal: `mount error(22): Invalid argument` (07-08/10)
 
-## Historial de correcciones (18/09)
+**Síntoma:** desde un alumno (IF03-21), `mount -t cifs ... -o guest`
+fallaba con `mount error(22)`. `dmesg` con `cifsFYI`:
+`STATUS_MORE_PROCESSING_REQUIRED` → `STATUS_NOT_FOUND` →
+`STATUS_INVALID_PARAMETER_MIX`. `smbclient -N -L` sí funcionaba.
 
-1ª versión: un único playbook `05_comparte_aula.yml` con `hosts: all`,
-asumiendo que cada equipo tenía su propio `comparte-aula` — incorrecto,
-descartado.
-2ª versión: separación en script (profesor) + playbook (alumnos), con
-cuenta de servicio de dominio para el montaje — corregido tras aclarar
-permisos de `/datos` (0777) y que `comparte-aula` también necesita
-escritura para alumnos.
-3ª versión (actual): la cuenta de servicio de dominio se sustituye por
-acceso de invitado con cuenta local, tras valorar que un profesor podría
-necesitar copiar algo desde un equipo fuera del dominio.
+**Causa real:** el Samba del profesor estaba en `security = ads` con
+**winbind inactivo**. Desde Samba 4.8, `security = ads` exige winbind; en
+estos equipos el dominio lo gestiona SSSD. El invitado iniciaba sesión
+pero Samba rechazaba la entrada al recurso: `smbclient -N
+//localhost/comparte-aula` → `tree connect failed:
+NT_STATUS_INVALID_PARAMETER_MIX`.
+
+**Arreglo:** `security = user`. El recurso es solo de invitado con
+cuenta local, así que Samba no necesita el dominio; los inicios de
+sesión de dominio del equipo siguen por SSSD. Si algún día se quiere
+otro recurso con usuarios del AD en este equipo, habrá que unir Samba
+de verdad (`net ads join` + winbind), no basta con volver a `ads`.
+
+**Cómo se llegó (lecciones):**
+- `smbclient -N -L` solo prueba el listado (IPC$), no la entrada al
+  recurso: la prueba buena es `smbclient -N //servidor/recurso -c ls`,
+  que reproduce el fallo en el propio servidor sin pasar por el cliente.
+- `STATUS_MORE_PROCESSING_REQUIRED` (paso normal de NTLMSSP) y
+  `STATUS_NOT_FOUND` (consulta DFS, normal en un Samba sin DFS) eran
+  ruido; el único error real era `INVALID_PARAMETER_MIX`.
+- Pistas falsas descartadas: versión SMB (`vers=3.0`→`2.0`), opciones
+  `sec=`, firma SMB (`server signing = no`), Kerberos/`cifs.upcall` en
+  el cliente, `/proc/fs/cifs/SecurityFlags`. Ninguna cambió el
+  resultado.
+- Correcciones reales por el camino (avisadas por `testparm`):
+  `guest account` debe ir en `[global]`, no en el recurso; `idmap
+  config * : backend = sss` no es válido (ya irrelevante con
+  `security = user`).
+
+## Otras incidencias en IF03
+
+- **Nombres de grupo:** `profesores`/`alumnos` no existen; son
+  `grupoprofesores`/`grupoalumnos`. Con `set -euo pipefail` el script
+  se paraba en el paso 7 (`chown: grupo inválido`) sin llegar a Samba.
+- **DNS:** `IF03-00` no resuelve desde los alumnos (`could not resolve
+  address`); se usa la IP `10.0.10.100`.
+- **YAML:** partir `opts:` en varias líneas con `>-` metía un espacio en
+  la cadena de opciones. Va en una sola línea entre comillas.
+- **Copias del script:** en IF03-00 se ejecutó por error una copia
+  antigua (con `security = ads`) que deshizo el arreglo. El repositorio
+  clonado está en `~/ansible-aulas/AULAS2627`; las copias de trabajo en
+  `~/ansible-aulas` (script del profesor:
+  `10_preparar_comparte_aula_profesor.sh`). Conviene renombrar o borrar
+  las versiones viejas.
+- **Samba se actualiza al lanzar el script:** `apt-get install samba`
+  sube de versión si hay actualización disponible (pasó de 9.7 a 9.8 en
+  IF03-00). Es normal, no afecta.
+
+## Pendiente
+
+- Lanzar el playbook al resto de alumnos de IF03 (`--limit 'all:!IF03-00'`).
+- Reiniciar algún alumno y comprobar que `/comparte-aula` vuelve a
+  aparecer solo (persistencia del montaje con `x-systemd.automount`).
+- Resolución de nombres: FQDN (`IF03-00.iesmhp.local`) o `/etc/hosts`
+  vía Ansible, en vez de IPs a mano.
+- Repetir en IF01 e IF02 (script en su equipo de profesor + playbook).
