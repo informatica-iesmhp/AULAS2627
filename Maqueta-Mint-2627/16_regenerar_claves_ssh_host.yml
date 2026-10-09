@@ -1,0 +1,175 @@
+---
+# regenerar_claves_ssh_host.yml
+# Aulas IF01 / IF02 / IF03 (y cualquier equipo clonado de la maqueta)
+#
+# PROBLEMA: los equipos se clonaron de la misma imagen sin regenerar las
+# claves de host SSH (/etc/ssh/ssh_host_*_key), así que todos presentan
+# la MISMA identidad SSH. Se vio en IF03: al conectar a IF03-20, SSH avisó
+# de que su clave era la misma que la de IF03-14. Consecuencias:
+#   - No se puede distinguir un equipo de otro por su clave SSH (la
+#     comprobación de known_hosts deja de proteger contra suplantaciones).
+#   - Todos comparten la misma clave privada de host.
+#
+# QUÉ HACE, en cada equipo:
+#   1. Lee la huella de su clave ed25519 actual y muestra un resumen de
+#      qué equipos comparten clave (esto lo hace SIEMPRE, también en modo
+#      solo_comprobar).
+#   2. Si no se ha hecho antes (marca /etc/ssh/.claves_host_regeneradas)
+#      genera claves nuevas (ed25519, ecdsa y rsa), las pone en su sitio,
+#      valida con "sshd -t" (si falla, restaura las anteriores) y
+#      reinicia ssh. Todo en una sola tarea, para no abrir conexiones
+#      nuevas a mitad de cambio.
+#   3. Actualiza el known_hosts del equipo DESDE EL QUE SE LANZA Ansible
+#      con las claves nuevas (por IP y por nombre de inventario), usando
+#      las claves leídas por la propia conexión ya autenticada — no hace
+#      falta volver a aceptar nada a mano.
+#   4. Comprueba con ssh-keyscan que el equipo ya ofrece la clave nueva y
+#      vuelve a mostrar el resumen: no debería quedar ninguna repetida.
+#
+# Es idempotente: gracias a la marca, relanzarlo NO vuelve a cambiar las
+# claves de los equipos ya hechos. Los equipos apagados se quedan para
+# la siguiente vez que se lance.
+#
+# CÓMO LANZARLO (desde el equipo del profesor, como siempre):
+#   a) Primero, solo mirar (no cambia nada):
+#        ansible-playbook -i inventarios/IF03.ini playbooks/regenerar_claves_ssh_host.yml \
+#            -u ansible-admin -e solo_comprobar=true
+#   b) Probar en UN equipo:
+#        ... --limit IF03-21
+#   c) El resto del aula:
+#        ... (sin --limit, o con --limit 'all:!IF03-21')
+#   Para repetirlo en un equipo ya hecho (no debería hacer falta):
+#        ... --limit IF03-XX -e forzar=true
+#
+# DESPUÉS: cualquier OTRO equipo o usuario que se hubiera conectado antes
+# por SSH a estos equipos (p. ej. el usuario depinfo desde otro PC) verá
+# el aviso "REMOTE HOST IDENTIFICATION HAS CHANGED". Es esperado: se
+# arregla en ese equipo con  ssh-keygen -R <IP o nombre>  y volviendo a
+# conectar.
+#
+# PARA EL FUTURO: cada vez que se clone de nuevo la maqueta, lanzar este
+# playbook sobre los equipos recién clonados.
+
+- name: Regenerar las claves de host SSH duplicadas por la clonación
+  hosts: all
+  become: yes
+  gather_facts: no
+
+  vars:
+    solo_comprobar: false
+    forzar: false
+    marca_regeneradas: /etc/ssh/.claves_host_regeneradas
+    known_hosts_controlador: "{{ lookup('env', 'HOME') }}/.ssh/known_hosts"
+
+  tasks:
+
+    - name: 1. Leer la huella de la clave ed25519 actual
+      command: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+      register: huella_antes
+      changed_when: false
+
+    - name: 2. Resumen ANTES — equipos que comparten clave
+      run_once: true
+      debug:
+        msg: >-
+          {%- set grupos = {} -%}
+          {%- for h in ansible_play_hosts if hostvars[h].huella_antes is defined -%}
+            {%- set fp = hostvars[h].huella_antes.stdout.split()[1] -%}
+            {%- set _ = grupos.update({fp: grupos.get(fp, []) + [h]}) -%}
+          {%- endfor -%}
+          {%- set repetidas = [] -%}
+          {%- for fp, equipos in grupos.items() if equipos | length > 1 -%}
+            {%- set _ = repetidas.append(equipos | length ~ ' equipos con la clave ' ~ fp ~ ': ' ~ equipos | join(', ')) -%}
+          {%- endfor -%}
+          {{ repetidas if repetidas else ['Ninguna clave repetida entre los equipos alcanzables.'] }}
+
+    - name: 3. ¿Ya se regeneraron antes en este equipo?
+      stat:
+        path: "{{ marca_regeneradas }}"
+      register: marca
+
+    - name: 4. Generar claves nuevas, validar, reiniciar ssh y devolver las públicas
+      when:
+        - not (solo_comprobar | bool)
+        - (forzar | bool) or not marca.stat.exists
+      shell: |
+        set -euo pipefail
+        NUEVAS="$(mktemp -d -p /root claves_nuevas.XXXXXX)"
+        ANTIGUAS="$(mktemp -d -p /root claves_antiguas.XXXXXX)"
+        trap 'rm -rf "$NUEVAS" "$ANTIGUAS"' EXIT
+
+        for t in ed25519 ecdsa rsa; do
+          ssh-keygen -q -t "$t" -N '' -C "root@$(hostname)" -f "$NUEVAS/ssh_host_${t}_key"
+        done
+
+        # Copia de las actuales, por si sshd no arrancara con las nuevas
+        cp -a /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub "$ANTIGUAS"/ 2>/dev/null || true
+
+        for t in ed25519 ecdsa rsa; do
+          install -m 600 -o root -g root "$NUEVAS/ssh_host_${t}_key"     /etc/ssh/
+          install -m 644 -o root -g root "$NUEVAS/ssh_host_${t}_key.pub" /etc/ssh/
+        done
+
+        if ! sshd -t; then
+          cp -a "$ANTIGUAS"/. /etc/ssh/
+          echo "sshd -t ha fallado con las claves nuevas: restauradas las anteriores" >&2
+          exit 1
+        fi
+
+        date -Is > {{ marca_regeneradas }}
+        systemctl restart ssh
+
+        # Lo último que se imprime son las claves públicas nuevas (las lee
+        # Ansible para actualizar el known_hosts del controlador)
+        cat /etc/ssh/ssh_host_ed25519_key.pub /etc/ssh/ssh_host_ecdsa_key.pub /etc/ssh/ssh_host_rsa_key.pub
+      args:
+        executable: /bin/bash
+      register: regenerado
+
+    - name: 5. Actualizar el known_hosts de este equipo (el que lanza Ansible)
+      when: regenerado is changed
+      delegate_to: localhost
+      become: false
+      throttle: 1   # de uno en uno: todos escriben en el mismo fichero
+      known_hosts:
+        path: "{{ known_hosts_controlador }}"
+        name: "{{ item.0 }}"
+        key: "{{ item.0 }} {{ item.1 }}"
+        state: present
+      loop: "{{ nombres | product(claves) | list }}"
+      loop_control:
+        label: "{{ item.0 }} {{ item.1.split()[0] }}"
+      vars:
+        nombres: "{{ [ansible_host | default(inventory_hostname), inventory_hostname] | unique }}"
+        claves: "{{ regenerado.stdout_lines | select('match', '^(ssh-|ecdsa-)') | map('regex_replace', '^(\\S+\\s+\\S+).*$', '\\1') | list }}"
+
+    - name: 6. Comprobar que el servidor SSH ya ofrece la clave nueva
+      when: regenerado is changed
+      delegate_to: localhost
+      become: false
+      command: ssh-keyscan -T 5 -t ed25519 {{ ansible_host | default(inventory_hostname) }}
+      register: escaneo
+      changed_when: false
+      failed_when: >-
+        (regenerado.stdout_lines | select('match', '^ssh-ed25519') | first).split()[1]
+        not in escaneo.stdout
+
+    - name: 7. Leer la huella ed25519 final
+      command: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+      register: huella_despues
+      changed_when: false
+
+    - name: 8. Resumen DESPUÉS — no debería quedar ninguna repetida
+      run_once: true
+      debug:
+        msg: >-
+          {%- set grupos = {} -%}
+          {%- for h in ansible_play_hosts if hostvars[h].huella_despues is defined -%}
+            {%- set fp = hostvars[h].huella_despues.stdout.split()[1] -%}
+            {%- set _ = grupos.update({fp: grupos.get(fp, []) + [h]}) -%}
+          {%- endfor -%}
+          {%- set repetidas = [] -%}
+          {%- for fp, equipos in grupos.items() if equipos | length > 1 -%}
+            {%- set _ = repetidas.append(equipos | length ~ ' equipos con la clave ' ~ fp ~ ': ' ~ equipos | join(', ')) -%}
+          {%- endfor -%}
+          {{ repetidas if repetidas else ['Ninguna clave repetida entre los equipos alcanzables.'] }}
